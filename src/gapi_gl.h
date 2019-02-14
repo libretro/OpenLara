@@ -249,7 +249,9 @@ extern struct retro_hw_render_callback hw_render;
 
     #if defined(_OS_WIN) || defined(_OS_LINUX) && !(__LIBRETRO_GLES__)
         PFNGLGENERATEMIPMAPPROC             glGenerateMipmap;
-        PFNGLTEXIMAGE3DPROC                 glTexImage3D;
+        #ifdef _OS_WIN
+            PFNGLTEXIMAGE3DPROC             glTexImage3D;
+        #endif
     // Profiling
         #ifdef PROFILE
             PFNGLOBJECTLABELPROC                glObjectLabel;
@@ -1048,7 +1050,9 @@ namespace GAPI {
 
             #if defined(_OS_WIN) || defined(_OS_LINUX) && !(__LIBRETRO_GLES__)
                 GetProcOGL(glGenerateMipmap);
-                GetProcOGL(glTexImage3D);
+                #ifdef _OS_WIN
+                    GetProcOGL(glTexImage3D);
+                #endif
 
                 #ifdef PROFILE
                     GetProcOGL(glObjectLabel);
