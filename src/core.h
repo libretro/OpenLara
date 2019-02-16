@@ -527,8 +527,6 @@ namespace Core {
 
     enum Pass { passCompose, passShadow, passAmbient, passSky, passWater, passFilter, passGUI, passMAX } pass;
 
-    const char *passNames[Core::passMAX] = { "COMPOSE", "SHADOW", "AMBIENT", "SKY", "WATER", "FILTER", "GUI" };
-
     GAPI::Texture *defaultTarget;
     
     int32   renderState;
