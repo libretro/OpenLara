@@ -729,7 +729,7 @@ namespace TR {
 
     LevelID getEndId(Version version) {
         switch (version & VER_VERSION) {
-            case VER_TR1 : return LVL_TR1_END2;
+            case VER_TR1 : return LVL_TR1_10C;
             case VER_TR2 : return LVL_TR2_HOUSE;
             case VER_TR3 : return LVL_TR3_CHAMBER;
         }
@@ -1007,7 +1007,11 @@ namespace TR {
                         const char *lng[] = { LANG_PREFIXES };
                         sprintf(title, "audio/1/track_%02d%s.ogg", track, lng[Core::settings.audio.language]);
                     } else {
-                        sprintf(title, "audio/1/track_%02d.ogg", track);
+                        if (TR::getSubs(version, track) != STR_EMPTY) {
+                            sprintf(title, "audio/1/track_%02d_EN.ogg", track);
+                        } else {
+                            sprintf(title, "audio/1/track_%02d.ogg", track);
+                        }
                     }
                 #ifndef _OS_WEB
                     if (Stream::existsContent(title))

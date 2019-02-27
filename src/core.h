@@ -36,7 +36,7 @@
     extern void osToggleVR(bool enable);
 #elif __SDL2__
     #define _GAPI_GL   1
-#ifdef SDL2GLES
+#ifdef SDL2_GLES
     #define _GAPI_GLES 1
     #define DYNGEOM_NO_VBO
 #endif
@@ -202,6 +202,7 @@ namespace Core {
         bool depthTexture;
         bool shadowSampler;
         bool discardFrame;
+        bool derivatives;
         bool texNPOT;
         bool tex3D;
         bool texRG;
@@ -265,6 +266,8 @@ namespace Core {
             #else
                 if (value > LOW && !(support.texFloat || support.texHalf))
                     value = LOW;
+                if (value > MEDIUM && !support.derivatives)
+                    value = MEDIUM;
                 water = value;
             #endif
             }

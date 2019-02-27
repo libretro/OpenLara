@@ -7,6 +7,7 @@
 
 #define PICKUP_SHOW_TIME 5.0f
 #define SUBTITLES_SPEED  0.1f
+#define TEXT_LINE_HEIGHT 18
 
 #ifdef _OS_PSV
     #define UI_SHOW_FPS
@@ -24,6 +25,10 @@ namespace UI {
     float    helpTipTime;
     float    hintTime;
     float    subsTime;
+    int      subsPartTime;
+    int      subsPartLength;
+    int      subsPos;
+    int      subsLength;
 
     StringID hintStr;
     StringID subsStr;
@@ -42,7 +47,7 @@ namespace UI {
 
     int advGlyphsStart;
 
-    #define CYR_MAP           "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜÝÞßáâãäæçêëìíïôö÷øùúûüýþÿ"
+    #define CYR_MAP           "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜÝÞßáâãäæçêëìíïòôö÷øùúûüýþÿ"
     #define CYR_MAP_COUNT     COUNT(CYR_MAP)
     #define CYR_MAP_START     102
     #define CYR_MAP_UPPERCASE 20
@@ -54,9 +59,9 @@ namespace UI {
         5, 5, 5, 11, 9, 7, 8, 6, 0, 7, 7, 3, 8, 8, 13, 7, 9, 4, 12, 12, 
         7, 5, 7, 7, 7, 7, 7, 7, 7, 7, 16, 14, 14, 14, 16, 16, 16, 16, 16, 12, 14, 8, 8, 8, 8, 8, 8, 8,
     // cyrillic
-        11, 11, 11, 13, 10, 13, 11, 11, 12, 12, 11, 9, 13, 13, 10, 13, // ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛ
-        9, 11, 12, 11, 10, 9, 8, 10, 11, 9, 10, 10, 11, 9, 10, 10,     // ÜÝÞßáâãäæçêëìíïô
-        10, 9, 11, 12, 9, 11, 8, 9, 13, 9                              // ö÷øùúûüýþÿ
+        11, 11, 11, 13, 10, 13, 11, 11, 12, 12, 11,  9, 13, 13, 10, 13, // ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛ
+         9, 11, 12, 11, 10,  9,  8, 10, 11,  9, 10, 10, 11,  9, 10, 12, // ÜÝÞßáâãäæçêëìíïò
+        10, 10,  9, 11, 12,  9, 11,  8,  9, 13,  9                      // ôö÷øùúûüýþÿ
     }; 
         
     static const uint8 char_map[102 + 33*2] = {
@@ -66,45 +71,13 @@ namespace UI {
         37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 100, 101, 102, 67, 0, 0, 0, 0, 0, 0, 0,
     // cyrillic
         0, 110, 0, 111, 112, 0, 113, 114, 115, 0, 0, 116, 0, 0, 0, 117, 0, 0, 0, 118, 119, 0, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129,
-        0, 130, 131, 132, 133, 0, 134, 135, 0, 0, 136, 137, 138, 139, 0, 140, 0, 0, 0, 0, 141, 0, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151,
+        0, 130, 131, 132, 133, 0, 134, 135, 0, 0, 136, 137, 138, 139, 0, 140, 0, 0, 141, 0, 142, 0, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152,
     };
 
     enum Align  { aLeft, aRight, aCenter, aCenterV };
 
-    inline char remapCyrillic(char c) {
-        if ((c >= 'À' && c <= 'ß') || (c >= 'à' && c <= 'ÿ')) {
-            switch (c) {
-                case 'à' : return 'a';
-                case 'å' : return 'e';
-                case '¸' : return 'e';
-                case 'è' : return 'u';
-                case 'é' : return 'u';
-                case 'î' : return 'o';
-                case 'ð' : return 'p';
-                case 'ñ' : return 'c';
-                case 'ò' : return 'm';
-                case 'ó' : return 'y';
-                case 'õ' : return 'x';
-                case 'À' : return 'A';
-                case 'Â' : return 'B';
-                case 'Å' : return 'E';
-                case '¨' : return 'E';
-                case 'Ê' : return 'K';
-                case 'Ì' : return 'M';
-                case 'Í' : return 'H';
-                case 'Î' : return 'O';
-                case 'Ð' : return 'P';
-                case 'Ñ' : return 'C';
-                case 'Ò' : return 'T';
-                case 'Õ' : return 'X';
-            }
-            return c;
-        }
-        return c;
-    }
-
     inline int charRemap(char c) {
-        if ((c >= 'À' && c <= 'ß') || (c >= 'à' && c <= 'ÿ')) {
+        if (isCyrillic(c)) {
             return char_map[CYR_MAP_START + (c - 'À')];
         }
 
@@ -117,7 +90,7 @@ namespace UI {
     }
 
     inline bool skipChar(char c) {
-        return c == '~' || c == '$' || c == '(' || c == ')' || c == '|' || c == '/' || c == '*' || c == '{';
+        return c == '~' || c == '$' || c == '(' || c == ')' || c == '|' || c == '}' || c == '*' || c == '{';
     }
 
     inline bool upperCase(int index) {
@@ -142,23 +115,41 @@ namespace UI {
             cyrSprites[i] = TR::TextureInfo(TR::TEX_TYPE_SPRITE, 0, -h + o, w, o, (i % 16) * 16, (i / 16) * 16 + (16 - h), w, h);
         }
 
-        // add additional sprites for Cyrillyc glyphs
-        int              newSpritesCount = level.spriteTexturesCount + COUNT(cyrSprites);
-        TR::TextureInfo *newSprites      = new TR::TextureInfo[newSpritesCount];
+        TR::TextureInfo japSprites[JAP_MAP_COUNT];
+        for (int i = 0; i < COUNT(japSprites); i++) {
+            japSprites[i] = TR::TextureInfo(TR::TEX_TYPE_SPRITE, 0, -16, 16, 0, (i % 16) * 16, ((i % 256) / 16) * 16, 16, 16);
+        }
 
-        memcpy(newSprites,                             level.spriteTextures, sizeof(TR::TextureInfo) * level.spriteTexturesCount);
-        memcpy(newSprites + level.spriteTexturesCount, cyrSprites,           sizeof(TR::TextureInfo) * COUNT(cyrSprites));
+    // init new sprites array with additional sprites
+        TR::TextureInfo *newSprites = new TR::TextureInfo[level.spriteTexturesCount + COUNT(cyrSprites) + COUNT(japSprites)];
+    // copy original sprites
+        memcpy(newSprites, level.spriteTextures, sizeof(TR::TextureInfo) * level.spriteTexturesCount);
+    // append cyrillic sprites
+        memcpy(newSprites + level.spriteTexturesCount, cyrSprites, sizeof(TR::TextureInfo) * COUNT(cyrSprites));
+        level.spriteTexturesCount += COUNT(cyrSprites);
+    // append japanese sprites
+        memcpy(newSprites + level.spriteTexturesCount, japSprites, sizeof(TR::TextureInfo) * COUNT(japSprites));
+        level.spriteTexturesCount += COUNT(japSprites);
 
         delete[] level.spriteTextures;
-
-        level.spriteTexturesCount = newSpritesCount;
-        level.spriteTextures      = newSprites;
+        level.spriteTextures = newSprites;
     }
 
     short2 getLineSize(const char *text) {
         int  x = 0;
 
         while (char c = *text++) {
+
+            if (isJapaneseStart(c)) {
+                while (getJapaneseGlyph(text) != 0xFFFF) {
+                    x += 16;
+                    text += 2;
+                }
+                text += 2;
+                continue;
+            }
+
+            if (c == '[') break;
             c = remapCyrillic(c);
             if (c == '\xBF') c = '?';
             if (c == '\xA1') c = '!';
@@ -173,13 +164,24 @@ namespace UI {
                 x += char_width[charRemap(c)] + 1;
             }
         }
-        return short2(x, 16);
+        return short2(x, TEXT_LINE_HEIGHT);
     }
 
     short2 getTextSize(const char *text) {
         int x = 0, w = 0, h = 16;
 
         while (char c = *text++) {
+
+            if (isJapaneseStart(c)) {
+                while (getJapaneseGlyph(text) != 0xFFFF) {
+                    x += 16;
+                    text += 2;
+                }
+                text += 2;
+                continue;
+            }
+
+            if (c == '[') break;
             c = remapCyrillic(c);
             if (c == '\xBF') c = '?';
             if (c == '\xA1') c = '!';
@@ -190,7 +192,7 @@ namespace UI {
                 x += 6;
             } else if (c == '@') {
                 w = max(w, x);
-                h += 16;
+                h += TEXT_LINE_HEIGHT;
                 x = 0;
             } else
                 x += char_width[charRemap(c)] + 1;
@@ -199,15 +201,6 @@ namespace UI {
 
         return short2(w, h);
     }
-
-    enum BarType {
-        BAR_FLASH,
-        BAR_HEALTH,
-        BAR_OXYGEN,
-        BAR_OPTION,
-        BAR_WHITE,
-        BAR_MAX,
-    };
 
     #ifdef SPLIT_BY_TILE
         uint16 curTile, curClut;
@@ -285,7 +278,37 @@ namespace UI {
             y -= getTextSize(text).y / 2;
         }
 
+        Color32 tColor, bColor, sColor = Color32(0, 0, 0, alpha);
+
         while (char c = *text++) {
+            // skip japanese chars
+            if (isJapaneseStart(c)) {
+                uint16 index;
+                while ((index = getJapaneseGlyph(text)) != 0xFFFF) {
+                    if (!isShadow) {
+                        index += UI::advGlyphsStart + CYR_MAP_COUNT; 
+                        mesh->addDynSprite(index, short3(x + 1, y + 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x - 1, y - 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x - 1, y + 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x + 1, y - 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x - 1, y    , 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x + 1, y    , 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x    , y - 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x    , y + 1, 0), false, false, sColor, sColor, true);
+
+                        tColor = Color32(252, 236, 136, alpha);
+                        bColor = Color32(160, 104,  56, alpha);
+                        mesh->addDynSprite(index, short3(x, y, 0), false, false, tColor, bColor, true);
+                    }
+                    x += 16;
+                    text += 2;
+                }
+                text += 2;
+                continue;
+            }
+
+            if (c == '[') break; // subs part end (timing tags)
+
             bool invertX = false, invertY = false;
             int dx = 0, dy = 0;
 
@@ -295,7 +318,7 @@ namespace UI {
 
             if (c == '@') {
                 x = int(pos.x) + getLeftOffset(text, align, int(width));
-                y += 16;
+                y += TEXT_LINE_HEIGHT;
                 continue;
             }
 
@@ -313,16 +336,15 @@ namespace UI {
 
             int frame = charRemap(charFrame);
 
-            Color32 tColor, bColor;
             if (isShadow) {
-                tColor = bColor = Color32(0, 0, 0, alpha);
+                tColor = bColor = sColor;
             } else {
                 tColor = bColor = Color32(255, 255, 255, alpha);
 
                 if (shade && ((level->version & TR::VER_TR3))) {
                     if (shade == SHADE_ORANGE) {
                         tColor = Color32(255, 190, 90, alpha);
-                        bColor = Color32(140, 50, 10, alpha);
+                        bColor = Color32(140,  50, 10, alpha);
                     }
                     if (shade == SHADE_GRAY) {
                         tColor = Color32(255, 255, 255, alpha);
@@ -344,7 +366,7 @@ namespace UI {
                 } else if (c == '*') {
                     dx = (char_width[idx] - char_width[frame]) / 2;
                     dy = isUppderCase ? -13 : -9;
-                } else if (c == '/') {
+                } else if (c == '}') {
                     frame = idx;
                     text++;
                     isSkipChar = false;
@@ -368,7 +390,7 @@ namespace UI {
             if (invertY) dy -= 10;
             int ax = 1;
 
-            if (c == '/') {
+            if (c == '}') {
                 ax += 2;
                 x += 2;
                 int ox = frame < 26 ? 1 : 0;
@@ -428,13 +450,77 @@ namespace UI {
         pickups.clear();
     }
 
+    void showHint(StringID str, float time) {
+        hintStr  = str;
+        hintTime = time;
+    }
+
+    void subsGetNextPart() {
+        const char *subs = STR[subsStr];
+
+        subsPos += subsPartLength;
+
+        if (subsPos >= subsLength) {
+            subsTime = 0.0f;
+            subsStr  = STR_EMPTY;
+            return;
+        }
+
+        for (int i = subsPos; i < subsLength; i++) {
+
+            if (isJapaneseStart(subs[i])) {
+                while (getJapaneseGlyph(subs + i + 1) != 0xFFFF) {
+                    i += 2;
+                }
+                i += 2;
+                continue;
+            }
+
+            if (subs[i] == '[') {
+                for (int j = i + 1; j < subsLength; j++) {
+                    if (subs[j] == ']') {
+                        char buf[32];
+                        memcpy(buf, subs + i + 1, j - i - 1);
+                        buf[j - i - 1] = 0;
+
+                        int time = atoi(buf);
+
+                        subsTime += (time - subsPartTime) / 1000.0f;
+                        subsPartTime = time;
+                        subsPartLength = j - subsPos + 1;
+                        return;
+                    }
+                }
+            }
+        }
+
+        subsPartLength = subsLength - subsPos;
+        subsTime = subsPartLength * SUBTITLES_SPEED;
+    }
+
+    void showSubs(StringID str) {
+        if (str == STR_EMPTY || !Core::settings.audio.subtitles)
+            return;
+        subsStr        = str;
+        subsLength     = strlen(STR[str]);
+        subsPos        = 0;
+        subsTime       = 0.0f;
+        subsPartTime   = 0;
+        subsPartLength = 0;
+
+        subsGetNextPart();
+    }
+
     void update() {
         if (hintTime > 0.0f) {
             hintTime = max(0.0f, hintTime - Core::deltaTime);
         }
 
         if (subsTime > 0.0f) {
-            subsTime = max(0.0f, subsTime - Core::deltaTime);
+            subsTime -= Core::deltaTime;
+            if (subsTime <= 0.0f) {
+                subsGetNextPart();
+            }
         }
 
         if (Input::down[ikH]) {
@@ -477,8 +563,6 @@ namespace UI {
     }
 
     void renderTouch() {
-        game->setupBinding();
-
         if (Input::touchTimerVis <= 0.0f) return;
 
         Core::setDepthTest(false);
@@ -510,27 +594,15 @@ namespace UI {
         Core::setDepthTest(true);
     }
 
-    void renderBar(BarType type, const vec2 &pos, const vec2 &size, float value, uint32 fgColor = 0xFFFFFFFF, uint32 bgColor = 0x80000000, uint32 brColor1 = 0xFF4C504C, uint32 brColor2 = 0xFF748474, uint32 fgColor2 = 0) {
+    void renderBar(CommonTexType type, const vec2 &pos, const vec2 &size, float value, uint32 fgColor = 0xFFFFFFFF, uint32 bgColor = 0x80000000, uint32 brColor1 = 0xFF4C504C, uint32 brColor2 = 0xFF748474, uint32 fgColor2 = 0) {
         MeshBuilder *mesh = game->getMesh();
 
         if (brColor1 != 0 || brColor2 != 0)
             mesh->addDynFrame(pos - 2.0f, size + 4.0f, brColor1, brColor2);
         if (bgColor != 0)
-            mesh->addDynBar(whiteTile, pos - 1.0f, size + 2.0f, bgColor);
+            mesh->addDynBar(whiteSprite, pos - 1.0f, size + 2.0f, bgColor);
         if ((fgColor != 0 || fgColor2 != 0) && value > 0.0f)
-            mesh->addDynBar(barTile[type], pos, vec2(size.x * value, size.y), fgColor, fgColor2);
-    }
-
-    void showHint(StringID str, float time) {
-        hintStr  = str;
-        hintTime = time;
-    }
-
-    void showSubs(StringID str) {
-        if (str == STR_EMPTY || !Core::settings.audio.subtitles)
-            return;
-        subsStr  = str;
-        subsTime = strlen(STR[str]) * SUBTITLES_SPEED;
+            mesh->addDynBar(CommonTex[type], pos, vec2(size.x * value, size.y), fgColor, fgColor2);
     }
 
     void renderHelp() {
@@ -566,8 +638,9 @@ namespace UI {
         float eye = UI::width * Core::eye * 0.02f;
 
         if (subsTime > 0.0f) {
-            textOut(vec2(16 - eye, height - 48) + vec2(1, 1), STR[subsStr], aCenterV, width - 32, 255, UI::SHADE_GRAY, true);
-            textOut(vec2(16 - eye, height - 48), STR[subsStr], aCenterV, width - 32, 255, UI::SHADE_GRAY);
+            const char *subs = STR[subsStr] + subsPos;
+            textOut(vec2(16 - eye, height - 48) + vec2(1, 1), subs, aCenterV, width - 32, 255, UI::SHADE_GRAY, true);
+            textOut(vec2(16 - eye, height - 48), subs, aCenterV, width - 32, 255, UI::SHADE_GRAY);
         }
     }
 
