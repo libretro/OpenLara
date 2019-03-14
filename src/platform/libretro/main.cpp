@@ -499,7 +499,7 @@ void retro_run(void)
 
 static void context_reset(void)
 {
-   fprintf(stderr, "Context reset!\n");
+   fprintf(stderr, "[openlara]: Context reset!\n");
    rglgen_resolve_symbols(hw_render.get_proc_address);
 
    sndData = new Sound::Frame[(int)(SND_RATE / FRAMERATE)];
@@ -600,19 +600,19 @@ bool retro_load_game(const struct retro_game_info *info)
    enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
    if (!environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt))
    {
-      fprintf(stderr, "XRGB8888 is not supported.\n");
+      fprintf(stderr, "[openlara]: XRGB8888 is not supported, exiting...\n");
       return false;
    }
 
    if (!retro_init_hw_context())
    {
-      fprintf(stderr, "HW Context could not be initialized, exiting...\n");
+      fprintf(stderr, "[openlara]: HW Context could not be initialized, exiting...\n");
       return false;
    }
 
 if (!path_is_absolute(info->path))
    {
-      fprintf(stderr, "Full path to content is required, exiting...\n");
+      fprintf(stderr, "[openlara]: Full path to content is required, exiting...\n");
       return false;
    }
 
@@ -637,7 +637,7 @@ if (!path_is_absolute(info->path))
    Core::width  = width;
    Core::height = height;
 
-   fprintf(stderr, "Loaded game!\n");
+   fprintf(stderr, "[openlara]: Loaded game!\n");
 
    return true;
 }
