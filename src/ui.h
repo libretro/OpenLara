@@ -47,10 +47,13 @@ namespace UI {
 
     int advGlyphsStart;
 
-    #define CYR_MAP           "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜÝÞßáâãäæçêëìíïòôö÷øùúûüýþÿ"
-    #define CYR_MAP_COUNT     COUNT(CYR_MAP)
+    #define CYR_MAP           "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜÝÞßáâãäæçêëìíïòôö÷øùúûüýþÿ" "i~"
+    #define CYR_MAP_COUNT     (COUNT(CYR_MAP) - 1)
     #define CYR_MAP_START     102
     #define CYR_MAP_UPPERCASE 20
+    #define CHAR_SPR_TILDA    (110 + CYR_MAP_COUNT - 1)
+    #define CHAR_SPR_I        (CHAR_SPR_TILDA - 1)
+
 
     const static uint8 char_width[110 + CYR_MAP_COUNT] = {
         14, 11, 11, 11, 11, 11, 11, 13, 8, 11, 12, 11, 13, 13, 12, 11, 12, 12, 11, 12, 13, 13, 13, 12, 12, 11, // A-Z
@@ -61,7 +64,9 @@ namespace UI {
     // cyrillic
         11, 11, 11, 13, 10, 13, 11, 11, 12, 12, 11,  9, 13, 13, 10, 13, // ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛ
          9, 11, 12, 11, 10,  9,  8, 10, 11,  9, 10, 10, 11,  9, 10, 12, // ÜÝÞßáâãäæçêëìíïò
-        10, 10,  9, 11, 12,  9, 11,  8,  9, 13,  9                      // ôö÷øùúûüýþÿ
+        10, 10,  9, 11, 12,  9, 11,  8,  9, 13,  9,                     // ôö÷øùúûüýþÿ
+    // additional latin (i~)
+        5, 10
     }; 
         
     static const uint8 char_map[102 + 33*2] = {
@@ -90,7 +95,7 @@ namespace UI {
     }
 
     inline bool skipChar(char c) {
-        return c == '~' || c == '$' || c == '(' || c == ')' || c == '|' || c == '}' || c == '*' || c == '{';
+        return c == '~' || c == '$' || c == '(' || c == ')' || c == '|' || c == '}' || c == '*' || c == '{' || c == '+';
     }
 
     inline bool upperCase(int index) {
@@ -108,7 +113,7 @@ namespace UI {
             int o = 0;
             char c = CYR_MAP[i];
 
-            if (c == 'á' || c == 'ä') h = 14;
+            if (c == 'á' || c == 'ä' || c == '~') h = 14;
             if (c == 'Ö' || c == 'Ù' || c == 'ö' || c == 'ù') { o = 1; h++; }
             if (c == 'ô') { o = 2; h += 2; }
 
@@ -133,6 +138,8 @@ namespace UI {
 
         delete[] level.spriteTextures;
         level.spriteTextures = newSprites;
+        TR::gSpriteTextures      = level.spriteTextures;
+        TR::gSpriteTexturesCount = level.spriteTexturesCount;
     }
 
     short2 getLineSize(const char *text) {
@@ -154,7 +161,7 @@ namespace UI {
             if (c == '\xBF') c = '?';
             if (c == '\xA1') c = '!';
 
-            if (skipChar(c)) {
+            if (skipChar(c) && *text && *text != '@') {
                 //
             } else if (c == ' ' || c == '_') {
                 x += 6;
@@ -186,7 +193,7 @@ namespace UI {
             if (c == '\xBF') c = '?';
             if (c == '\xA1') c = '!';
 
-            if (skipChar(c)) {
+            if (skipChar(c) && *text && *text != '@') {
                 //
             } else if (c == ' ' || c == '_') {
                 x += 6;
@@ -278,7 +285,9 @@ namespace UI {
             y -= getTextSize(text).y / 2;
         }
 
-        Color32 tColor, bColor, sColor = Color32(0, 0, 0, alpha);
+        Color32 tColor, bColor, sColor = Color32(48, 12, 0, alpha);
+
+        char lastChar = 0;
 
         while (char c = *text++) {
             // skip japanese chars
@@ -287,18 +296,18 @@ namespace UI {
                 while ((index = getJapaneseGlyph(text)) != 0xFFFF) {
                     if (!isShadow) {
                         index += UI::advGlyphsStart + CYR_MAP_COUNT; 
-                        mesh->addDynSprite(index, short3(x + 1, y + 1, 0), false, false, sColor, sColor, true);
-                        mesh->addDynSprite(index, short3(x - 1, y - 1, 0), false, false, sColor, sColor, true);
-                        mesh->addDynSprite(index, short3(x - 1, y + 1, 0), false, false, sColor, sColor, true);
-                        mesh->addDynSprite(index, short3(x + 1, y - 1, 0), false, false, sColor, sColor, true);
-                        mesh->addDynSprite(index, short3(x - 1, y    , 0), false, false, sColor, sColor, true);
-                        mesh->addDynSprite(index, short3(x + 1, y    , 0), false, false, sColor, sColor, true);
-                        mesh->addDynSprite(index, short3(x    , y - 1, 0), false, false, sColor, sColor, true);
-                        mesh->addDynSprite(index, short3(x    , y + 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x + 1, 1 + y + 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x - 1, 1 + y - 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x - 1, 1 + y + 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x + 1, 1 + y - 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x - 1, 1 + y    , 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x + 1, 1 + y    , 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x    , 1 + y - 1, 0), false, false, sColor, sColor, true);
+                        mesh->addDynSprite(index, short3(x    , 1 + y + 1, 0), false, false, sColor, sColor, true);
 
                         tColor = Color32(252, 236, 136, alpha);
                         bColor = Color32(160, 104,  56, alpha);
-                        mesh->addDynSprite(index, short3(x, y, 0), false, false, tColor, bColor, true);
+                        mesh->addDynSprite(index, short3(x, 1 + y, 0), false, false, tColor, bColor, true);
                     }
                     x += 16;
                     text += 2;
@@ -335,6 +344,9 @@ namespace UI {
             if (charFrame == '{')    charFrame = '(';
 
             int frame = charRemap(charFrame);
+            if (c == '+' && *text && *text != '@') frame = CHAR_SPR_TILDA;
+            if (c == 'i' && skipChar(lastChar)) frame = CHAR_SPR_I;
+            lastChar = c;
 
             if (isShadow) {
                 tColor = bColor = sColor;
@@ -353,7 +365,7 @@ namespace UI {
                 }
             }
 
-            bool isSkipChar = skipChar(c);
+            bool isSkipChar = skipChar(c) && *text && *text != '@';
 
             if (isSkipChar) {
                 int idx = charRemap(remapCyrillic(*text));
@@ -564,6 +576,8 @@ namespace UI {
 
     void renderTouch() {
         if (Input::touchTimerVis <= 0.0f) return;
+
+        Core::whiteTex->bind(sDiffuse);
 
         Core::setDepthTest(false);
         Core::setBlendMode(bmPremult);

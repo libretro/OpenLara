@@ -237,10 +237,6 @@ namespace GAPI {
         void setParam(UniformType uType, const mat4 &value, int count = 1) {
             setConstant(uType, (float*)&value, count * 4);
         }
-
-        void setParam(UniformType uType, const Basis &value, int count = 1) {
-            setConstant(uType, (float*)&value, count * 2);
-        }
     };
 
 // Texture
@@ -248,11 +244,11 @@ namespace GAPI {
         LPDIRECT3DTEXTURE9     tex2D;
         LPDIRECT3DCUBETEXTURE9 texCube;
 
-        int       width, height, origWidth, origHeight;
+        int       width, height, depth, origWidth, origHeight, origDepth;
         TexFormat fmt;
         uint32    opt;
 
-        Texture(int width, int height, uint32 opt) : tex2D(NULL), texCube(NULL), width(width), height(height), origWidth(width), origHeight(height), fmt(FMT_RGBA), opt(opt) {}
+        Texture(int width, int height, int depth, uint32 opt) : tex2D(NULL), texCube(NULL), width(width), height(height), depth(depth), origWidth(width), origHeight(height), origDepth(depth), fmt(FMT_RGBA), opt(opt) {}
 
         void init(void *data) {
             ASSERT((opt & OPT_PROXY) == 0);

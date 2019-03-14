@@ -92,7 +92,7 @@ enum StringID {
     , STR_CTRL_LAST = STR_CTRL_FIRST + cMAX - 1
     // keys
     , STR_KEY_FIRST
-    , STR_KEY_LAST  = STR_KEY_FIRST + ikZ
+    , STR_KEY_LAST  = STR_KEY_FIRST + ikBack
     // gamepad
     , STR_JOY_FIRST
     , STR_JOY_LAST  = STR_JOY_FIRST + jkMAX - 1
@@ -134,6 +134,10 @@ enum StringID {
     , STR_PUZZLE_SCARAB
     , STR_PUZZLE_PYRAMID
 // TR1 subtitles
+    , STR_TR1_SUB_CAFE
+    , STR_TR1_SUB_LIFT
+    , STR_TR1_SUB_CANYON
+    , STR_TR1_SUB_PRISON
     , STR_TR1_SUB_22 // CUT4
     , STR_TR1_SUB_23 // CUT1
     , STR_TR1_SUB_24
@@ -240,14 +244,24 @@ enum StringID {
       "English"       \
     , "Fran|cais"     \
     , "Deutsch"       \
-    , "Espa(~nol"     \
+    , "Espa+nol"      \
     , "Italiano"      \
     , "Polski"        \
-    , "Portugu)es"    \
+    , "Portugu(es"    \
     , "–усски{и"      \
-    , "\x11\x02\x70\x01\x98\x01\xCD\xFF\xFF" \
+    , "\x11\x02\x70\x01\x97\x01\xD6\xFF\xFF" \
 
 #define LANG_PREFIXES "_EN", "_FR", "_DE", "_ES", "_IT", "_PL", "_PT", "_RU", "_JA"
+
+#define STR_KEYS \
+      "NONE", "LEFT", "RIGHT", "UP", "DOWN", "SPACE", "TAB", "ENTER", "ESCAPE", "SHIFT", "CTRL", "ALT" \
+    , "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" \
+    , "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M" \
+    , "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" \
+    , "PAD0", "PAD1", "PAD2", "PAD3", "PAD4", "PAD5", "PAD6", "PAD7", "PAD8", "PAD9", "PAD+", "PAD-", "PADx", "PAD/", "PAD." \
+    , "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12" \
+    , "-", "+", "<", ">", "/", "\\", ",", ".", "$", ":", "'", "PGUP", "PGDN", "HOME", "END", "DEL", "INS", "BKSP" \
+    , "NONE", "A", "B", "X", "Y", "L BUMPER", "R BUMPER", "SELECT", "START", "L STICK", "R STICK", "L TRIGGER", "R TRIGGER", "D-LEFT", "D-RIGHT", "D-UP", "D-DOWN"
 
 const char *helpText = 
     "Start - add second player or restore Lara@"
@@ -274,6 +288,7 @@ const char *helpText =
 #include "lang/es.h"
 #include "lang/it.h"
 #include "lang/pl.h"
+#include "lang/pt.h"
 #include "lang/ru.h"
 #include "lang/ja.h"
 
@@ -286,6 +301,7 @@ void ensureLanguage(int lang) {
     ASSERT(COUNT(STR_ES) == STR_MAX);
     ASSERT(COUNT(STR_IT) == STR_MAX);
     ASSERT(COUNT(STR_PL) == STR_MAX);
+    ASSERT(COUNT(STR_PT) == STR_MAX);
     ASSERT(COUNT(STR_RU) == STR_MAX);
     ASSERT(COUNT(STR_JA) == STR_MAX);
 
@@ -297,7 +313,7 @@ void ensureLanguage(int lang) {
         case STR_LANG_ES : STR = (char**)STR_ES; break;
         case STR_LANG_IT : STR = (char**)STR_IT; break;
         case STR_LANG_PL : STR = (char**)STR_PL; break;
-        case STR_LANG_PT : STR = (char**)STR_EN; break;
+        case STR_LANG_PT : STR = (char**)STR_PT; break;
         case STR_LANG_RU : STR = (char**)STR_RU; break;
         case STR_LANG_JA : STR = (char**)STR_JA; break;
         default          : STR = (char**)STR_EN; break;

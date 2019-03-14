@@ -291,11 +291,7 @@ namespace Game {
     void frameEnd() {
         if (Core::settings.version == SETTINGS_READING) return;
 
-        if (level) {
-            level->setupBinding();
-            level->glyphs->bind(sDiffuse);
-            UI::renderTouch();
-        }
+        UI::renderTouch();
         Core::endFrame();
     }
 

@@ -1113,7 +1113,8 @@ namespace TR {
     };
 
     struct TextureInfo {
-        TextureType  type;
+        TextureType  type;     // determines in which atlas this texture will be stored
+        TextureType  dataType; // original texture type from file
         uint16       index;
         uint16       clut;
         uint16       tile;
@@ -1126,13 +1127,13 @@ namespace TR {
 
         TextureInfo() {}
 
-        TextureInfo(TextureType type, int16 l, int16 t, int16 r, int16 b, uint8 tx, uint8 ty, uint8 tw, uint8 th) : type(type), attribute(1), l(l), t(t), r(r), b(b) {
+        TextureInfo(TextureType type, int16 l, int16 t, int16 r, int16 b, uint8 tx, uint8 ty, uint8 tw, uint8 th) : type(type), dataType(type), attribute(1), l(l), t(t), r(r), b(b) {
             texCoord[0] = texCoordAtlas[0] = short2( tx,          ty          );
             texCoord[1] = texCoordAtlas[1] = short2( tx + tw - 1, ty + th - 1 );
         }
 
         short4 getMinMax() const {
-            if (type == TEX_TYPE_SPRITE)
+            if (dataType == TEX_TYPE_SPRITE)
                 return short4( texCoord[0].x, texCoord[0].y, texCoord[1].x, texCoord[1].y );
 
             return short4(
@@ -1144,7 +1145,7 @@ namespace TR {
         }
 
         short4 getMinMaxAtlas() const {
-            if (type == TEX_TYPE_SPRITE)
+            if (dataType == TEX_TYPE_SPRITE)
                 return short4( texCoordAtlas[0].x, texCoordAtlas[0].y, texCoordAtlas[1].x, texCoordAtlas[1].y );
 
             return short4(
@@ -3010,7 +3011,7 @@ namespace TR {
                            ((uint64)((const char*)(str))[4] << 32) | ((uint64)((const char*)(str))[5] << 40) | ((uint64)((const char*)(str))[6] << 48) | ((uint64)((const char*)(str))[7] << 56))
 
         void readSAT(Stream &stream) {
-        #ifndef _OS_PSP
+        #if !defined(_OS_PSP) && !defined(_OS_3DS)
             Room *room = NULL;
 
             while (stream.pos < stream.size) {
@@ -3843,6 +3844,7 @@ namespace TR {
             initAnimTex();
             initExtra();
             initCutscene();
+            initTextureTypes();
 
             gObjectTextures      = objectTextures;
             gSpriteTextures      = spriteTextures;
@@ -3982,6 +3984,46 @@ namespace TR {
                     default :
                         cutMatrix.translate(vec3(float(e.x), float(e.y), float(e.z)));
                         cutMatrix.rotateY(e.rotation);
+                }
+            }
+        }
+
+        void initTextureTypes() {
+            // rooms geometry
+            for (int roomIndex = 0; roomIndex < roomsCount; roomIndex++) {
+                TR::Room       &room = rooms[roomIndex];
+                TR::Room::Data &data = room.data;
+                for (int i = 0; i < data.fCount; i++) {
+                    Face &f = data.faces[i];
+                    ASSERT(!f.colored);
+                    ASSERT(f.flags.texture < objectTexturesCount);
+                    TR::TextureInfo &t = objectTextures[f.flags.texture];
+                    t.type = TEX_TYPE_ROOM;
+                }
+            }
+
+            // rooms static meshes
+            for (int staticMeshIndex = 0; staticMeshIndex < staticMeshesCount; staticMeshIndex++) {
+                TR::StaticMesh *staticMesh = &staticMeshes[staticMeshIndex];
+                if (!meshOffsets[staticMesh->mesh]) continue;
+                TR::Mesh &mesh = meshes[meshOffsets[staticMesh->mesh]];
+
+                for (int i = 0; i < mesh.fCount; i++) {
+                    TR::Face &f = mesh.faces[i];
+                    ASSERT(f.colored || f.flags.texture < objectTexturesCount);
+                    if (f.colored) continue;
+                    TR::TextureInfo &t = objectTextures[f.flags.texture];
+                    t.type = TEX_TYPE_ROOM;
+                }
+            }
+
+            // animated textures
+            for (int animTextureIndex = 0; animTextureIndex < animTexturesCount; animTextureIndex++) {
+                AnimTexture &animTex = animTextures[animTextureIndex];
+
+                for (int j = 0; j < animTex.count; j++) {
+                    TextureInfo &t = objectTextures[animTex.textures[j]];
+                    t.type = TEX_TYPE_ROOM;
                 }
             }
         }
@@ -4970,7 +5012,7 @@ namespace TR {
                     t.texCoord[3] = t.texCoordAtlas[3] = short2( d.x3, d.y3 );\
                 }
 
-            t.type = type;
+            t.type = t.dataType = type;
 
             switch (version) {
                 case VER_TR1_SAT : {
@@ -5087,6 +5129,7 @@ namespace TR {
                 }
 
             t.type      = TEX_TYPE_SPRITE;
+            t.dataType  = TEX_TYPE_SPRITE;
             t.attribute = 1;
 
             switch (version) {
@@ -5283,7 +5326,7 @@ namespace TR {
                     uint32 cOffset = uint32(uint16(t->clut + t->tile)) << 3;
 
                     uint8 *data = NULL;
-                    switch (t->type) {
+                    switch (t->dataType) {
                         case TEX_TYPE_ROOM   : data = roomTexturesData;   break;
                         case TEX_TYPE_ITEM   : data = itemTexturesData;   break;
                         case TEX_TYPE_OBJECT : data = objectTexturesData; break;
@@ -5299,22 +5342,11 @@ namespace TR {
                     int w = uv.z - uv.x;
                     ASSERT(w <= 256 && h <= 256);
 
-                    /*
-                    if (t->type == TEX_TYPE_OBJECT) {
-                        for (int y = 0; y < h; y++)
-                            for (int x = 0; x < h; x++) {
-                                ColorIndex4 *index = indices + (y * w + x) / 2;
-                                uint8 p = uint8((x % 2) ? index->a : index->b) << 4;
-                                dst->color[y * 256 + x] = Color32(p, p, p, 255);
-                            }
-                        return;
-                    }
-                    */
                     for (int y = 0; y < h; y++)
                         for (int x = 0; x < w; x++) {
                             ColorIndex4 *index;
                             
-                            if (t->type == TEX_TYPE_ROOM) {
+                            if (t->dataType == TEX_TYPE_ROOM) {
                                 int iw = w / 2;
                                 int ih = h / 2;
                                 int ix = x % iw;

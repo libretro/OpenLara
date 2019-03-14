@@ -152,16 +152,13 @@ static const uint8 STR_QUANTIZATION[] = {
     27, 29, 35, 38, 46, 56, 69, 83
 };
 
-static const float STR_IDCT[] = {
-    0.354f,  0.354f,  0.354f,  0.354f,  0.354f,  0.354f,  0.354f,  0.354f,
-    0.490f,  0.416f,  0.278f,  0.098f, -0.098f, -0.278f, -0.416f, -0.490f,
-    0.462f,  0.191f, -0.191f, -0.462f, -0.462f, -0.191f,  0.191f,  0.462f,
-    0.416f, -0.098f, -0.490f, -0.278f,  0.278f,  0.490f,  0.098f, -0.416f,
-    0.354f, -0.354f, -0.354f,  0.354f,  0.354f, -0.354f, -0.354f,  0.354f,
-    0.278f, -0.490f,  0.098f,  0.416f, -0.416f, -0.098f,  0.490f, -0.278f,
-    0.191f, -0.462f,  0.462f, -0.191f, -0.191f,  0.462f, -0.462f,  0.191f,
-    0.098f, -0.278f,  0.416f, -0.490f,  0.490f, -0.416f,  0.278f, -0.098f,
-};
+#define STR_IDCT_A 23170
+#define STR_IDCT_B 32138
+#define STR_IDCT_C 27245
+#define STR_IDCT_D 18204
+#define STR_IDCT_E 6392
+#define STR_IDCT_F 30273
+#define STR_IDCT_G 12539
 
 struct Video {
 
@@ -975,32 +972,46 @@ struct Video {
         }
         
         void IDCT(int16 *b) {
-            float t[64];
+            int16 t[64];
 
-            for (int x = 0; x < 8; x++)
-                for (int y = 0; y < 8; y++)
-                    t[x + y * 8] = b[x + 0 * 8] * STR_IDCT[0 * 8 + y]
-                                 + b[x + 1 * 8] * STR_IDCT[1 * 8 + y]
-                                 + b[x + 2 * 8] * STR_IDCT[2 * 8 + y]
-                                 + b[x + 3 * 8] * STR_IDCT[3 * 8 + y]
-                                 + b[x + 4 * 8] * STR_IDCT[4 * 8 + y]
-                                 + b[x + 5 * 8] * STR_IDCT[5 * 8 + y]
-                                 + b[x + 6 * 8] * STR_IDCT[6 * 8 + y]
-                                 + b[x + 7 * 8] * STR_IDCT[7 * 8 + y];
+            #define IDCT_PASS(src, dst, x, y) { \
+                int16 *s = src + i * y;\
+                int16 *d = dst + i * y;\
+                int32 a0 = s[0 * x] * STR_IDCT_A; \
+                int32 b1 = s[1 * x] * STR_IDCT_B; \
+                int32 c1 = s[1 * x] * STR_IDCT_C; \
+                int32 d1 = s[1 * x] * STR_IDCT_D; \
+                int32 e1 = s[1 * x] * STR_IDCT_E; \
+                int32 f2 = s[2 * x] * STR_IDCT_F; \
+                int32 g2 = s[2 * x] * STR_IDCT_G; \
+                int32 b3 = s[3 * x] * STR_IDCT_B; \
+                int32 c3 = s[3 * x] * STR_IDCT_C; \
+                int32 d3 = s[3 * x] * STR_IDCT_D; \
+                int32 e3 = s[3 * x] * STR_IDCT_E; \
+                int32 a4 = s[4 * x] * STR_IDCT_A; \
+                int32 b5 = s[5 * x] * STR_IDCT_B; \
+                int32 c5 = s[5 * x] * STR_IDCT_C; \
+                int32 d5 = s[5 * x] * STR_IDCT_D; \
+                int32 e5 = s[5 * x] * STR_IDCT_E; \
+                int32 f6 = s[6 * x] * STR_IDCT_F; \
+                int32 g6 = s[6 * x] * STR_IDCT_G; \
+                int32 b7 = s[7 * x] * STR_IDCT_B; \
+                int32 c7 = s[7 * x] * STR_IDCT_C; \
+                int32 d7 = s[7 * x] * STR_IDCT_D; \
+                int32 e7 = s[7 * x] * STR_IDCT_E; \
+                d[0 * x] = ( a0 + b1 + f2 + c3 + a4 + d5 + g6 + e7 ) >> 16; \
+                d[1 * x] = ( a0 + c1 + g2 - e3 - a4 - b5 - f6 - d7 ) >> 16; \
+                d[2 * x] = ( a0 + d1 - g2 - b3 - a4 + e5 + f6 + c7 ) >> 16; \
+                d[3 * x] = ( a0 + e1 - f2 - d3 + a4 + c5 - g6 - b7 ) >> 16; \
+                d[4 * x] = ( a0 - e1 - f2 + d3 + a4 - c5 - g6 + b7 ) >> 16; \
+                d[5 * x] = ( a0 - d1 - g2 + b3 - a4 - e5 + f6 - c7 ) >> 16; \
+                d[6 * x] = ( a0 - c1 + g2 + e3 - a4 + b5 - f6 + d7 ) >> 16; \
+                d[7 * x] = ( a0 - b1 + f2 - c3 + a4 - d5 + g6 - e7 ) >> 16; }
 
-            for (int x = 0; x < 8; x++)
-                for (int y = 0; y < 8; y++) {
-                    int i = y * 8;
-                    b[x + i] = int16(
-                               t[0 + i] * STR_IDCT[x + 0 * 8]
-                             + t[1 + i] * STR_IDCT[x + 1 * 8]
-                             + t[2 + i] * STR_IDCT[x + 2 * 8]
-                             + t[3 + i] * STR_IDCT[x + 3 * 8]
-                             + t[4 + i] * STR_IDCT[x + 4 * 8]
-                             + t[5 + i] * STR_IDCT[x + 5 * 8]
-                             + t[6 + i] * STR_IDCT[x + 6 * 8]
-                             + t[7 + i] * STR_IDCT[x + 7 * 8]);
-                }
+            for (int i = 0; i < 8; i++) IDCT_PASS(b, t, 8, 1);
+            for (int i = 0; i < 8; i++) IDCT_PASS(t, b, 1, 8);
+
+            #undef IDCT_PASS
         }
 
         virtual bool decodeVideo(Color32 *pixels) {
@@ -1253,15 +1264,23 @@ struct Video {
         SAT,
     } format;
 
+    Sound::Sample *sample;
     Decoder *decoder;
     Texture *frameTex[2];
     Color32 *frameData;
     float   step, stepTimer, time;
     bool    isPlaying;
     bool    needUpdate;
-    Sound::Sample *sample;
 
-    Video(Stream *stream) : decoder(NULL), stepTimer(0.0f), time(0.0f), isPlaying(false) {
+    static void playAsync(Stream *stream, void *userData) {
+        if (stream) {
+            Video *video = (Video*)userData;
+            video->sample = Sound::play(stream, NULL, 1.0f, 1.0f, Sound::MUSIC);
+            Core::resetTime();
+        }
+    }
+
+    Video(Stream *stream, TR::LevelID id) : sample(NULL), decoder(NULL), stepTimer(0.0f), time(0.0f), isPlaying(false) {
         frameTex[0] = frameTex[1] = NULL;
 
         if (!stream) return;
@@ -1289,8 +1308,10 @@ struct Video {
         for (int i = 0; i < 2; i++)
             frameTex[i] = new Texture(decoder->width, decoder->height, 1, FMT_RGBA, 0, frameData);
 
-        sample = Sound::play(decoder);
-        sample->pitch = pitch;
+        if (!TR::getVideoTrack(id, playAsync, this)) {
+            sample = Sound::play(decoder);
+            sample->pitch = pitch;
+        }
 
         step      = 1.0f / decoder->fps;
         stepTimer = step;
@@ -1300,8 +1321,12 @@ struct Video {
 
     virtual ~Video() {
         OS_LOCK(Sound::lock);
-        sample->decoder = NULL;
-        sample->stop();
+        if (sample) {
+            if (sample->decoder == decoder) {
+                sample->decoder = NULL;
+            }
+            sample->stop();
+        }
         delete decoder;
         delete frameTex[0];
         delete frameTex[1];

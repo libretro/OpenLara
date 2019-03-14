@@ -60,7 +60,7 @@ void osMutexUnlock(void *obj) {
 // timing
 int osStartTime = 0;
 
-int osGetTime() {
+int osGetTimeMS() {
 #ifdef DEBUG
     LARGE_INTEGER Freq, Count;
     QueryPerformanceFrequency(&Freq);
@@ -79,11 +79,16 @@ InputKey keyToInputKey(int code) {
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        VK_NUMPAD0, VK_NUMPAD1, VK_NUMPAD2, VK_NUMPAD3, VK_NUMPAD4, VK_NUMPAD5, VK_NUMPAD6, VK_NUMPAD7, VK_NUMPAD8, VK_NUMPAD9, VK_ADD, VK_SUBTRACT, VK_MULTIPLY, VK_DIVIDE, VK_DECIMAL,
+        VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12,
+        VK_OEM_MINUS, VK_OEM_PLUS, VK_OEM_4, VK_OEM_6, VK_OEM_2, VK_OEM_5, VK_OEM_COMMA, VK_OEM_PERIOD, VK_OEM_3, VK_OEM_1, VK_OEM_7, VK_PRIOR, VK_NEXT, VK_HOME, VK_END, VK_DELETE, VK_INSERT, VK_BACK,
     };
 
-    for (int i = 0; i < sizeof(codes) / sizeof(codes[0]); i++)
-        if (codes[i] == code)
+    for (int i = 0; i < COUNT(codes); i++) {
+        if (codes[i] == code) {
             return (InputKey)(ikLeft + i);
+        }
+    }
     return ikNone;
 }
 
@@ -144,14 +149,14 @@ void osJoyVibrate(int index, float L, float R) {
 
 void joyRumble(int index) {
     JoyDevice &joy = joyDevice[index];
-    if (XInputSetState && joy.ready && (joy.vL != joy.oL || joy.vR != joy.oR) && osGetTime() >= joy.time) {
+    if (XInputSetState && joy.ready && (joy.vL != joy.oL || joy.vR != joy.oR) && Core::getTime() >= joy.time) {
         XINPUT_VIBRATION vibration;
         vibration.wLeftMotorSpeed  = int(joy.vL * 65535.0f);
         vibration.wRightMotorSpeed = int(joy.vR * 65535.0f);
         XInputSetState(index, &vibration);
         joy.oL = joy.vL;
         joy.oR = joy.vR;
-        joy.time = osGetTime() + JOY_MIN_UPDATE_FX_TIME;
+        joy.time = Core::getTime() + JOY_MIN_UPDATE_FX_TIME;
     }
 }
 
@@ -861,7 +866,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     Sound::channelsCount = 0;
 
-    osStartTime = osGetTime();
+    osStartTime = Core::getTime();
 
     touchInit(hWnd);
     joyInit();

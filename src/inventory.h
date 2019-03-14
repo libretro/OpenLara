@@ -565,17 +565,21 @@ struct Inventory {
 
     static void loadVideo(Stream *stream, void *userData) {
         Inventory *inv = (Inventory*)userData;
-        if (stream)
-            inv->video = new Video(stream);
-        new Stream(TR::getGameScreen(inv->game->getLevel()->id), loadTitleBG, inv);
+        TR::LevelID id = inv->game->getLevel()->id;
+        if (stream) {
+            inv->video = new Video(stream, id);
+            UI::showSubs(getVideoSubs(id));
+        }
+        new Stream(TR::getGameScreen(id), loadTitleBG, inv);
     }
 
     static void loadLogo(Stream *stream, void *userData) {
         Inventory *inv = (Inventory*)userData;
-        if (stream)
-            inv->video = new Video(stream);
-        else
+        if (stream) {
+            inv->video = new Video(stream, TR::LVL_CUSTOM);
+        } else {
             inv->skipVideo();
+        }
     }
 
     Inventory() : game(NULL), itemsCount(0) {
@@ -1161,7 +1165,7 @@ struct Inventory {
         else if (Input::down[ikDown]  || joy.down[jkDown]  || joy.L.y >  0.5f)
             key = cDown;
 
-        #ifdef _OS_NX
+        #if defined(_OS_SWITCH) || defined(_OS_3DS)
         // swap A/B keys for Nintendo (Japanese) UX style
         if (Input::touchTimerVis == 0.0f) {
             if (key == cAction) {
@@ -1670,8 +1674,6 @@ struct Inventory {
             Core::mModel.scale(vec3(1.0f / 32767.0f));
         #endif
 
-        Core::setBlendMode(alpha < 255 ? bmAlpha : bmNone);
-
         Index  indices[6 * 3] = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11 };
         Vertex vertices[4 * 3];
 
@@ -1743,6 +1745,8 @@ struct Inventory {
         } else {
             background[0]->bind(sDiffuse);
         }
+
+        Core::setBlendMode(alpha < 255 ? bmAlpha : bmNone);
 
         game->setShader(Core::passFilter, Shader::FILTER_UPSCALE, false, false);
         Core::active.shader->setParam(uParam, vec4(float(Core::active.textures[sDiffuse]->width), float(Core::active.textures[sDiffuse]->height), Core::getTime() * 0.001f, 0.0f));
@@ -1894,8 +1898,6 @@ struct Inventory {
             return;
 
     // items
-        game->setupBinding();
-
         setupCamera(aspect);
 
         UI::setupInventoryShading(vec3(0.0f));
@@ -1985,7 +1987,7 @@ struct Inventory {
             const char *bSelect = STR[STR_KEY_FIRST + ikEnter];
             const char *bBack   = STR[STR_KEY_FIRST + Core::settings.controls[playerIndex].keys[cInventory].key];
 
-            #ifdef _OS_NX
+            #if defined(_OS_SWITCH) || defined(_OS_3DS)
                 bSelect = "A";
                 bBack   = "B";
             #endif

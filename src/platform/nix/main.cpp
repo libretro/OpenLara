@@ -18,7 +18,7 @@
 // timing
 unsigned int startTime;
 
-int osGetTime() {
+int osGetTimeMS() {
     timeval t;
     gettimeofday(&t, NULL);
     return int((t.tv_sec - startTime) * 1000 + t.tv_usec / 1000);
@@ -83,11 +83,16 @@ InputKey keyToInputKey(int code) {
         19, 10, 11, 12, 13, 14, 15, 16, 17, 18,
         38, 56, 54, 40, 26, 41, 42, 43, 31, 44, 45, 46, 58,
         57, 32, 33, 24, 27, 39, 28, 30, 55, 25, 53, 29, 52,
+        0x5A, 0x57, 0x58, 0x59, 0x53, 0x54, 0x55, 0x4F, 0x50, 0x51, 0x56, 0x52, 0x3F, 0x6A, 0x5B,
+        0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x5F, 0x60,
+        0x14, 0x15, 0x22, 0x23, 0x3D, 0x33, 0x3B, 0x3C, 0x31, 0x2F, 0x30, 0x70, 0x75, 0x6E, 0x73, 0x77, 0x76, 0x16
     };
 
-    for (int i = 0; i < sizeof(codes) / sizeof(codes[0]); i++)
-        if (codes[i] == code)
+    for (int i = 0; i < COUNT(codes); i++) {
+        if (codes[i] == code) {
             return (InputKey)(ikLeft + i);
+        }
+    }
     return ikNone;
 }
 
@@ -185,7 +190,7 @@ void joyInit() {
             joy.fx.type         = FF_RUMBLE;
             joy.fx.replay.delay = 0;
             joy.vL = joy.oL = joy.vR = joy.oR = 0.0f;
-            joy.time  = osGetTime();
+            joy.time  = Core::getTime();
         }
     }
 }
@@ -222,7 +227,7 @@ void joyRumble(JoyDevice &joy) {
     if (joy.oL == 0.0f && joy.vL == 0.0f && joy.oR == 0.0f && joy.vR == 0.0f)
         return;
  
-    if (osGetTime() <= joy.time)
+    if (Core::getTime() <= joy.time)
         return;
      
     input_event event;
@@ -255,7 +260,7 @@ void joyRumble(JoyDevice &joy) {
     joy.oL = joy.vL;
     joy.oR = joy.vR;
     
-    joy.time = osGetTime() + joy.fx.replay.length;
+    joy.time = Core::getTime() + joy.fx.replay.length;
 }
 
 void joyUpdate() {
