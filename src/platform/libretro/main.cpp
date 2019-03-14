@@ -487,9 +487,9 @@ void retro_run(void)
 
    Core::deltaTime             = 1.0 / FRAMERATE;
 
-   updated = Game::update();
-   if (updated)
-      Game::render();
+   Game::update();
+   Game::render();
+
    video_cb(RETRO_HW_FRAME_BUFFER_VALID, width, height, 0);
 }
 
