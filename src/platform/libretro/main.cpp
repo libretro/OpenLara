@@ -37,8 +37,8 @@ struct retro_hw_render_callback hw_render;
 static unsigned MAX_WIDTH  = 320;
 static unsigned MAX_HEIGHT = 240;
 
-static unsigned FRAMERATE     = 60;
-static unsigned SND_RATE      = 44100;
+static float FRAMERATE     = 0.0;
+static float SND_RATE      = 44100.0;
 
 static unsigned width         = BASE_WIDTH;
 static unsigned height        = BASE_HEIGHT;
@@ -232,6 +232,7 @@ void retro_get_system_info(struct retro_system_info *info)
 
 void retro_get_system_av_info(struct retro_system_av_info *info)
 {
+
    info->timing = (struct retro_system_timing) {
       .fps = (float)FRAMERATE,
       .sample_rate = (float)SND_RATE,
@@ -253,7 +254,7 @@ void retro_set_environment(retro_environment_t cb)
    struct retro_variable variables[] = {
       {
          "openlara_framerate",
-         "Framerate (restart); 60fps|70fps|72fps|75fps|90fps|100fps|119fps|120fps|144fps|240fps|244fps|15fps|30fps",
+         "Framerate (restart); auto|60fps|70fps|72fps|75fps|90fps|100fps|119fps|120fps|144fps|240fps|244fps|15fps|30fps",
       },
       {
          "openlara_resolution",
@@ -321,34 +322,37 @@ static void update_variables(bool first_startup)
       if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
       {
          if (!strcmp(var.value, "15fps"))
-            FRAMERATE     = 15;
+            FRAMERATE     = 15.0;
          else if (!strcmp(var.value, "30fps"))
-            FRAMERATE     = 30;
+            FRAMERATE     = 30.0;
          else if (!strcmp(var.value, "60fps"))
-            FRAMERATE     = 60;
+            FRAMERATE     = 60.0;
          else if (!strcmp(var.value, "70fps"))
-            FRAMERATE     = 70;
+            FRAMERATE     = 70.0;
          else if (!strcmp(var.value, "72fps"))
-            FRAMERATE     = 72;
+            FRAMERATE     = 72.0;
          else if (!strcmp(var.value, "75fps"))
-            FRAMERATE     = 75;
+            FRAMERATE     = 75.0;
          else if (!strcmp(var.value, "90fps"))
-            FRAMERATE     = 90;
+            FRAMERATE     = 90.0;
          else if (!strcmp(var.value, "100fps"))
-            FRAMERATE     = 100;
+            FRAMERATE     = 100.0;
          else if (!strcmp(var.value, "119fps"))
-            FRAMERATE     = 119;
+            FRAMERATE     = 119.0;
          else if (!strcmp(var.value, "120fps"))
-            FRAMERATE     = 120;
+            FRAMERATE     = 120.0;
          else if (!strcmp(var.value, "144fps"))
-            FRAMERATE     = 144;
+            FRAMERATE     = 144.0;
          else if (!strcmp(var.value, "240fps"))
-            FRAMERATE     = 240;
+            FRAMERATE     = 240.0;
          else if (!strcmp(var.value, "244fps"))
-            FRAMERATE     = 244;
+            FRAMERATE     = 244.0;
          }
       else
-         FRAMERATE     = 60;
+         environ_cb(RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE, &FRAMERATE);
+         if (FRAMERATE == 0.0)
+             FRAMERATE = 60.0;
+         fprintf(stderr, "[openlara]: Target refresh rate: %f\n", FRAMERATE);
    }
 }
 
@@ -472,7 +476,7 @@ void retro_run(void)
          Input::setJoyDown(i, JoyKey::jkRT, false);
    }
 
-   int audio_frames = SND_RATE / FRAMERATE;
+   int audio_frames = (int)(SND_RATE / FRAMERATE);
    int16_t *samples = (int16_t*)sndData;
 
    Sound::fill(sndData, audio_frames);
@@ -498,7 +502,7 @@ static void context_reset(void)
    fprintf(stderr, "Context reset!\n");
    rglgen_resolve_symbols(hw_render.get_proc_address);
 
-   sndData = new Sound::Frame[SND_RATE / FRAMERATE];
+   sndData = new Sound::Frame[(int)(SND_RATE / FRAMERATE)];
    Game::init(levelpath);
 }
 
