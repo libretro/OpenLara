@@ -78,7 +78,7 @@ void osMutexUnlock(void *obj) {
     LeaveCriticalSection((CRITICAL_SECTION*)obj);
 }
 
-int osGetTime() {
+int osGetTimeMS() {
     LARGE_INTEGER Freq, Count;
     QueryPerformanceFrequency(&Freq);
     QueryPerformanceCounter(&Count);
@@ -115,7 +115,7 @@ void osRWLockWrite(void *obj) {
 #include <sys/time.h>
 unsigned int startTime;
 
-int osGetTime(void)
+int osGetTimeMS(void)
 {
     timeval t;
     gettimeofday(&t, NULL);
@@ -126,7 +126,7 @@ int osGetTime(void)
 #if defined(__MACH__)
 #include <mach/mach_time.h>
 
-int osGetTime(void)
+int osGetTimeMS(void)
 {
     const int64_t kOneMillion = 1000 * 1000;
     static mach_timebase_info_data_t info;
