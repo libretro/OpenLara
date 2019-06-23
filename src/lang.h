@@ -17,6 +17,9 @@ enum StringID {
     , STR_NO
     , STR_OFF
     , STR_ON
+    , STR_NO_STEREO
+    , STR_SBS
+    , STR_ANAGLYPH
     , STR_SPLIT
     , STR_VR
     , STR_QUALITY_LOW
@@ -31,6 +34,8 @@ enum StringID {
     , STR_LANG_PT
     , STR_LANG_RU
     , STR_LANG_JA
+    , STR_LANG_GR
+    , STR_LANG_FI
     , STR_APPLY
     , STR_GAMEPAD_1
     , STR_GAMEPAD_2
@@ -250,8 +255,10 @@ enum StringID {
     , "Portugu(es"    \
     , "–усски{и"      \
     , "\x11\x02\x70\x01\x97\x01\xD6\xFF\xFF" \
+    , "\x11\x01\x22\x01\x0F\x01\x0F\x01\x0E\x01\x06\x01\x04\x01\x0C\x01\x0B\xFF\xFF" \
+    , "Suomi"
 
-#define LANG_PREFIXES "_EN", "_FR", "_DE", "_ES", "_IT", "_PL", "_PT", "_RU", "_JA"
+#define LANG_PREFIXES "_EN", "_FR", "_DE", "_ES", "_IT", "_PL", "_PT", "_RU", "_JA", "_GR", "_FI"
 
 #define STR_KEYS \
       "NONE", "LEFT", "RIGHT", "UP", "DOWN", "SPACE", "TAB", "ENTER", "ESCAPE", "SHIFT", "CTRL", "ALT" \
@@ -272,14 +279,14 @@ const char *helpText =
     "C - Look@"
     "R - Slow motion@"
     "T - Fast motion@"
-    "Roll - Up + Down@"
-    "Step Left - Walk + Left@"
-    "Step Right - Walk + Right@"
-    "Out of water - Up + Action@"
-    "Handstand - Up + Walk@"
-    "Swan dive - Up + Walk + Jump@"
-    "First Person View - Look + Action@"
-    "DOZY on - Look + Duck + Action + Jump@"
+    "Roll - Up & Down@"
+    "Step Left - Walk & Left@"
+    "Step Right - Walk & Right@"
+    "Out of water - Up & Action@"
+    "Handstand - Up & Walk@"
+    "Swan dive - Up & Walk & Jump@"
+    "First Person View - Look & Action@"
+    "DOZY on - Look & Duck & Action & Jump@"
     "DOZY off - Walk";
 
 #include "lang/en.h"
@@ -291,6 +298,8 @@ const char *helpText =
 #include "lang/pt.h"
 #include "lang/ru.h"
 #include "lang/ja.h"
+#include "lang/gr.h"
+#include "lang/fi.h"
 
 char **STR = NULL;
 
@@ -304,6 +313,8 @@ void ensureLanguage(int lang) {
     ASSERT(COUNT(STR_PT) == STR_MAX);
     ASSERT(COUNT(STR_RU) == STR_MAX);
     ASSERT(COUNT(STR_JA) == STR_MAX);
+    ASSERT(COUNT(STR_GR) == STR_MAX);
+    ASSERT(COUNT(STR_FI) == STR_MAX);
 
     lang += STR_LANG_EN;
 
@@ -316,6 +327,8 @@ void ensureLanguage(int lang) {
         case STR_LANG_PT : STR = (char**)STR_PT; break;
         case STR_LANG_RU : STR = (char**)STR_RU; break;
         case STR_LANG_JA : STR = (char**)STR_JA; break;
+        case STR_LANG_GR : STR = (char**)STR_GR; break;
+        case STR_LANG_FI : STR = (char**)STR_FI; break;
         default          : STR = (char**)STR_EN; break;
     }
 }

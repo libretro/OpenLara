@@ -18,9 +18,54 @@ extern struct retro_hw_render_callback hw_render;
 #elif _OS_ANDROID
     #include <dlfcn.h>
 
-    #include <GLES3/gl3.h>
-    #include <GLES3/gl3ext.h>
-    #include <GLES2/gl2ext.h>
+//    #define _GAPI_GLES2 // for old devices
+
+    #ifdef _GAPI_GLES2
+        #include <GLES2/gl2.h>
+        #include <GLES2/gl2ext.h>
+
+        #define GL_CLAMP_TO_BORDER          0x812D
+        #define GL_TEXTURE_BORDER_COLOR     0x1004
+
+        #define GL_TEXTURE_COMPARE_MODE     0x884C
+        #define GL_TEXTURE_COMPARE_FUNC     0x884D
+        #define GL_COMPARE_REF_TO_TEXTURE   0x884E
+
+        #undef  GL_RG
+        #undef  GL_RG32F
+        #undef  GL_RG16F
+        #undef  GL_RGBA32F
+        #undef  GL_RGBA16F
+        #undef  GL_HALF_FLOAT
+
+        #define GL_RG           GL_RGBA
+        #define GL_RGBA32F      GL_RGBA
+        #define GL_RGBA16F      GL_RGBA
+        #define GL_RG32F        GL_RGBA
+        #define GL_RG16F        GL_RGBA
+        #define GL_HALF_FLOAT   GL_HALF_FLOAT_OES
+
+        #define GL_TEXTURE_3D           0
+        #define GL_TEXTURE_WRAP_R       0
+        #define GL_DEPTH_STENCIL        GL_DEPTH_STENCIL_OES
+        #define GL_UNSIGNED_INT_24_8    GL_UNSIGNED_INT_24_8_OES
+
+        #define glTexImage3D(...) 0
+
+        #define glGenVertexArrays(...)
+        #define glDeleteVertexArrays(...)
+        #define glBindVertexArray(...)
+    
+        #define GL_PROGRAM_BINARY_LENGTH     GL_PROGRAM_BINARY_LENGTH_OES
+        #define glGetProgramBinary(...)
+        #define glProgramBinary(...)
+
+        #define glInvalidateFramebuffer(...)
+    #else
+        #include <GLES3/gl3.h>
+        #include <GLES3/gl3ext.h>
+        #include <GLES2/gl2ext.h>
+    #endif
 
 #elif __LIBRETRO_GLES__
     #include <EGL/egl.h>
@@ -109,6 +154,10 @@ extern struct retro_hw_render_callback hw_render;
         #include <SDL2/SDL_opengl_glext.h>
     #endif
 
+#elif defined(_OS_PSC)
+    #include <GLES3/gl3.h>
+    #include <GLES2/gl2ext.h>
+    extern EGLDisplay display;
 #elif defined(_OS_RPI) || defined(_OS_CLOVER)
     #include <GLES2/gl2.h>
     #include <GLES2/gl2ext.h>
@@ -422,6 +471,7 @@ namespace GAPI {
     typedef ::Vertex Vertex;
 
     int cullMode, blendMode;
+    bool depthWrite;
 
     char GLSL_HEADER_VERT[512];
     char GLSL_HEADER_FRAG[512];
@@ -429,31 +479,31 @@ namespace GAPI {
 // Shader
     #ifndef FFP
         const char SHADER_COMPOSE[] =
-            #include "shaders/compose.glsl"
+            #include "../shaders/compose.glsl"
         ;
 
         const char SHADER_SHADOW[] =
-            #include "shaders/shadow.glsl"
+            #include "../shaders/shadow.glsl"
         ;
 
         const char SHADER_AMBIENT[] =
-            #include "shaders/ambient.glsl"
+            #include "../shaders/ambient.glsl"
         ;
 
         const char SHADER_SKY[] =
-            #include "shaders/sky.glsl"
+            #include "../shaders/sky.glsl"
         ;
 
         const char SHADER_WATER[] =
-            #include "shaders/water.glsl"
+            #include "../shaders/water.glsl"
         ;
 
         const char SHADER_FILTER[] =
-            #include "shaders/filter.glsl"
+            #include "../shaders/filter.glsl"
         ;
 
         const char SHADER_GUI[] =
-            #include "shaders/gui.glsl"
+            #include "../shaders/gui.glsl"
         ;
         
         const char *DefineName[SD_MAX]  = { SHADER_DEFINES(DECL_STR) };
@@ -848,7 +898,7 @@ namespace GAPI {
             glGenerateMipmap(target);
             if ((opt & (OPT_VOLUME | OPT_CUBEMAP | OPT_NEAREST)) == 0 && (Core::support.maxAniso > 0)) {
                 glTexParameteri(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, min(int(Core::support.maxAniso), 8));
-            #if !defined(_OS_RPI) && !defined(_OS_CLOVER) // TODO
+            #if !defined(_OS_RPI) && !defined(_OS_CLOVER) && !defined(_GAPI_GLES2) // TODO
                 glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 3);
             #endif
             }
@@ -1035,14 +1085,12 @@ namespace GAPI {
 
 
     GLuint FBO, defaultFBO;
-    struct RenderTargetCache {
-        int count;
-        struct Item {
-            GLuint  ID;
-            int     width;
-            int     height;
-        } items[MAX_RENDER_BUFFERS];
-    } rtCache[2];
+    struct RenderTargetCacheItem {
+        GLuint  ID;
+        int     width;
+        int     height;
+    };
+    Array<RenderTargetCacheItem> rtCache[2];
 
     bool extSupport(const char *str, const char *ext) {
         if (!str) return false;
@@ -1050,10 +1098,8 @@ namespace GAPI {
     }
 
     void init() {
-        memset(rtCache, 0, sizeof(rtCache));
-
         #ifdef _OS_ANDROID
-            void *libGL = dlopen("libGLESv2.so", RTLD_LAZY);
+            //void *libGL = dlopen("libGLESv2.so", RTLD_LAZY);
         #endif
 
         #if defined(_OS_WIN) || defined(_OS_LINUX)
@@ -1164,7 +1210,7 @@ namespace GAPI {
         #ifdef _OS_WEB
             GLES3 = WEBGL_VERSION != 1;
         #else
-            #ifdef _GAPI_GLES
+            #if defined(_GAPI_GLES) && !defined(_GAPI_GLES2)
                 int GLES_VERSION = 1;
                 #if defined(__SDL2__)
                     SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &GLES_VERSION);
@@ -1190,8 +1236,14 @@ namespace GAPI {
         support.discardFrame   = extSupport(ext, "_discard_framebuffer");
         support.texNPOT        = GLES3 || extSupport(ext, "_texture_npot") || extSupport(ext, "_texture_non_power_of_two");
         support.texRG          = GLES3 || extSupport(ext, "_texture_rg ");   // hope that isn't last extension in string ;)
+        #ifdef _GAPI_GLES2 // TODO
+            support.shaderBinary = false;
+            support.VAO = false;
+            support.texRG = false;
+            support.discardFrame = false;
+        #endif
         #if (defined(_GAPI_GLES) || defined(__LIBRETRO_GLES__))
-            support.derivatives = GLES3 || _GL_OES_standard_derivatives;
+            support.derivatives = GLES3 || _GL_OES_standard_derivatives; 
             support.tex3D       = GLES3;
         #else
             support.derivatives = true; 
@@ -1321,17 +1373,24 @@ namespace GAPI {
         glDeleteFramebuffers(1, &FBO);
 
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
-        for (int b = 0; b < 2; b++)
-            for (int i = 0; i < rtCache[b].count; i++)
-                glDeleteRenderbuffers(1, &rtCache[b].items[i].ID);
+        for (int b = 0; b < 2; b++) {
+            for (int i = 0; i < rtCache[b].length; i++) {
+                glDeleteRenderbuffers(1, &rtCache[b][i].ID);
+            }
+            rtCache[b].clear();
+        }
     }
 
     mat4 ortho(float l, float r, float b, float t, float znear, float zfar) {
-        return mat4(mat4::PROJ_NEG_POS, l, r, b, t, znear, zfar);
+        mat4 m;
+        m.ortho(mat4::PROJ_NEG_POS, l, r, b, t, znear, zfar);
+        return m;
     }
 
-    mat4 perspective(float fov, float aspect, float znear, float zfar) {
-        return mat4(mat4::PROJ_NEG_POS, fov, aspect, znear, zfar);
+    mat4 perspective(float fov, float aspect, float znear, float zfar, float eye) {
+        mat4 m;
+        m.perspective(mat4::PROJ_NEG_POS, fov, aspect, znear, zfar, eye);
+        return m;
     }
 
     bool beginFrame() {
@@ -1350,15 +1409,21 @@ namespace GAPI {
     }
 
     int cacheRenderTarget(bool depth, int width, int height) {
-        RenderTargetCache &cache = rtCache[depth];
+        Array<RenderTargetCacheItem> &items = rtCache[depth];
 
-        for (int i = 0; i < cache.count; i++)
-            if (cache.items[i].width == width && cache.items[i].height == height)
-                return i;
+        for (int i = 0; i < items.length; i++)
+            if (items[i].width == width && items[i].height == height) {
+                RenderTargetCacheItem item = items[i];
+                items.remove(i);
+                return items.push(item);
+            }
 
-        ASSERT(cache.count < MAX_RENDER_BUFFERS);
+        if (items.length >= MAX_RENDER_BUFFERS) {
+            glDeleteRenderbuffers(1, &items[0].ID);
+            items.remove(0);
+        }
 
-        RenderTargetCache::Item &item = cache.items[cache.count];
+        RenderTargetCacheItem item;
         item.width  = width;
         item.height = height;
 
@@ -1366,7 +1431,7 @@ namespace GAPI {
         glBindRenderbuffer(GL_RENDERBUFFER, item.ID);
         glRenderbufferStorage(GL_RENDERBUFFER, depth ? GL_DEPTH_COMPONENT16 : GL_RGB565, width, height);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
-        return cache.count++;
+        return items.push(item);
     }
 
     void bindTarget(Texture *target, int face) {
@@ -1436,7 +1501,15 @@ namespace GAPI {
 
     void clear(bool color, bool depth) {
         uint32 mask = (color ? GL_COLOR_BUFFER_BIT : 0) | (depth ? GL_DEPTH_BUFFER_BIT : 0);
-        if (mask) glClear(mask);
+        if (mask) {
+            if (depth && !depthWrite) {
+                glDepthMask(GL_TRUE);
+                glClear(mask);
+                glDepthMask(GL_FALSE);
+            } else {
+                glClear(mask);
+            }
+        }
     }
 
     void setClearColor(const vec4 &color) {
@@ -1456,6 +1529,7 @@ namespace GAPI {
     }
 
     void setDepthWrite(bool enable) {
+        depthWrite = enable;
         glDepthMask(enable ? GL_TRUE : GL_FALSE);
     }
 
@@ -1566,50 +1640,6 @@ namespace GAPI {
         ubyte4 c;
         glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &c);
         return vec4(float(c.x), float(c.y), float(c.z), float(c.w)) * (1.0f / 255.0f);
-    }
-
-    void initPSO(PSO *pso) {
-        ASSERT(pso);
-        ASSERT(pso && pso->data == NULL);
-        pso->data = &pso;
-    }
-
-    void deinitPSO(PSO *pso) {
-        ASSERT(pso);
-        ASSERT(pso->data != NULL);
-        pso->data = NULL;
-    }
-
-    void bindPSO(const PSO *pso) {
-        ASSERT(pso);
-        ASSERT(pso->data != NULL);
-
-        uint32 state = pso->renderState;
-        uint32 mask  = 0;//mask;
-
-        if (Core::active.pso)
-            mask ^= Core::active.pso->renderState;
-
-        if (!Core::active.pso || Core::active.pso->clearColor != pso->clearColor)
-            setClearColor(pso->clearColor);
-
-        if (mask & RS_DEPTH_TEST)
-            setDepthTest((state & RS_DEPTH_TEST) != 0);
-        
-        if (mask & RS_DEPTH_WRITE)
-            setDepthWrite((state & RS_DEPTH_WRITE) != 0);
-
-        if (mask & RS_COLOR_WRITE)
-            setColorWrite((state & RS_COLOR_WRITE_R) != 0, (state & RS_COLOR_WRITE_G) != 0, (state & RS_COLOR_WRITE_B) != 0, (state & RS_COLOR_WRITE_A) != 0);
-
-        if (mask & RS_CULL)
-            setCullMode(state & RS_CULL);
-
-        if (mask & RS_BLEND)
-            setBlendMode(state & RS_BLEND);
-
-        if (mask & RS_DISCARD)
-            setAlphaTest((state & RS_DISCARD) != 0);
     }
 }
 

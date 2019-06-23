@@ -106,7 +106,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>wsock32.lib;openvr_api.lib;d3d9.lib;opengl32.lib;winmm.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wsock32.lib;openvr_api.lib;d3d9.lib;d3d11.lib;opengl32.lib;winmm.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Editor|Win32'">
@@ -179,7 +179,7 @@
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>wcrt.lib;wsock32.lib;openvr_api.lib;opengl32.lib;winmm.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wcrt.lib;wsock32.lib;openvr_api.lib;opengl32.lib;d3d11.lib;winmm.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
@@ -199,25 +199,32 @@
     <ClInclude Include="..\..\collision.h" />
     <ClInclude Include="..\..\controller.h" />
     <ClInclude Include="..\..\core.h" />
+    <ClInclude Include="..\..\extension.h" />
     <ClInclude Include="..\..\format.h" />
-    <ClInclude Include="..\..\gapi_c3d.h" />
-    <ClInclude Include="..\..\gapi_d3d9.h" />
-    <ClInclude Include="..\..\gapi_gl.h" />
-    <ClInclude Include="..\..\gapi_gu.h" />
-    <ClInclude Include="..\..\gapi_gxm.h" />
-    <ClInclude Include="..\..\gapi_vk.h" />
     <ClInclude Include="..\..\debug.h" />
     <ClInclude Include="..\..\enemy.h" />
     <ClInclude Include="..\..\frustum.h" />
     <ClInclude Include="..\..\game.h" />
     <ClInclude Include="..\..\gameflow.h" />
+    <ClInclude Include="..\..\gapi\c3d.h" />
+    <ClInclude Include="..\..\gapi\d3d11.h" />
+    <ClInclude Include="..\..\gapi\d3d9.h" />
+    <ClInclude Include="..\..\gapi\gl.h" />
+    <ClInclude Include="..\..\gapi\gu.h" />
+    <ClInclude Include="..\..\gapi\gxm.h" />
+    <ClInclude Include="..\..\gapi\vk.h" />
+    <ClInclude Include="..\..\gltf.h" />
+    <ClInclude Include="..\..\json.h" />
     <ClInclude Include="..\..\lang.h" />
     <ClInclude Include="..\..\lang\de.h" />
     <ClInclude Include="..\..\lang\en.h" />
     <ClInclude Include="..\..\lang\es.h" />
+    <ClInclude Include="..\..\lang\fi.h" />
     <ClInclude Include="..\..\lang\fr.h" />
-    <ClInclude Include="..\..\lang\glyph_cyr.h" />
-    <ClInclude Include="..\..\lang\glyph_jap.h" />
+    <ClInclude Include="..\..\lang\glyph_gr.h" />
+    <ClInclude Include="..\..\lang\glyph_ja.h" />
+    <ClInclude Include="..\..\lang\glyph_ru.h" />
+    <ClInclude Include="..\..\lang\gr.h" />
     <ClInclude Include="..\..\lang\it.h" />
     <ClInclude Include="..\..\lang\ja.h" />
     <ClInclude Include="..\..\lang\pl.h" />
@@ -239,7 +246,7 @@
     <ClInclude Include="..\..\sound.h" />
     <ClInclude Include="..\..\sprite.h" />
     <ClInclude Include="..\..\texture.h" />
-    <ClInclude Include="..\..\trigger.h" />
+    <ClInclude Include="..\..\objects.h" />
     <ClInclude Include="..\..\utils.h" />
     <ClInclude Include="..\..\ui.h" />
     <ClInclude Include="..\..\video.h" />

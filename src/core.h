@@ -20,9 +20,10 @@
 #else
     #define _GAPI_GL     1
     //#define _GAPI_D3D9   1
-#endif
+    //#define _GAPI_D3D11  1
     //#define _GAPI_VULKAN 1
     //#define _NAPI_SOCKET
+#endif
 
     #include <windows.h>
 
@@ -53,7 +54,6 @@
 
     #define DYNGEOM_NO_VBO
 #elif __PSC__
-    #define _OS_CLOVER 1
     #define _OS_PSC    1
     #define _GAPI_GL   1
     #define _GAPI_GLES 1
@@ -129,7 +129,11 @@
 #include "utils.h"
 
 // muse be equal with base shader
-#define SHADOW_TEX_SIZE      1024
+#ifdef __OS_3DS
+    #define SHADOW_TEX_SIZE      512
+#else
+    #define SHADOW_TEX_SIZE      2048
+#endif
 
 extern void* osMutexInit     ();
 extern void  osMutexFree     (void *obj);
@@ -237,7 +241,7 @@ namespace Core {
 
     struct Settings {
         enum Quality  { LOW, MEDIUM, HIGH };
-        enum Stereo   { STEREO_OFF, STEREO_ON, STEREO_SPLIT, STEREO_VR };
+        enum Stereo   { STEREO_OFF, STEREO_SBS, STEREO_ANAGLYPH, STEREO_SPLIT, STEREO_VR };
 
         uint8 version;
 
@@ -286,6 +290,10 @@ namespace Core {
                     value = MEDIUM;
                 water = value;
             #endif
+            }
+
+            bool isStereo() {
+                return stereo == STEREO_SBS || stereo == STEREO_ANAGLYPH || stereo == STEREO_VR;
             }
         } detail;
 
@@ -354,6 +362,7 @@ namespace Core {
     #include "napi_dummy.h"
 #endif
 
+#define LIGHT_STACK_SIZE     1
 #define MAX_LIGHTS           4
 #define MAX_RENDER_BUFFERS   32
 #define MAX_CONTACTS         15
@@ -412,8 +421,9 @@ enum TexOption {
     OPT_NEAREST = 0x0010,
     OPT_TARGET  = 0x0020,
     OPT_VERTEX  = 0x0040,
-    OPT_DEPEND  = 0x0080,
-    OPT_PROXY   = 0x0100,
+    OPT_DYNAMIC = 0x0080,
+    OPT_DEPEND  = 0x0100,
+    OPT_PROXY   = 0x0200,
 };
 
 // Pipeline State Object
@@ -515,6 +525,7 @@ struct MeshRange {
     E( FILTER_DOWNSAMPLE_DEPTH ) \
     E( FILTER_GRAYSCALE        ) \
     E( FILTER_BLUR             ) \
+    E( FILTER_ANAGLYPH         ) \
     E( FILTER_EQUIRECTANGULAR  ) \
     /* options */ \
     E( UNDERWATER      ) \
@@ -541,7 +552,7 @@ const char *UniformName[uMAX] = { SHADER_UNIFORMS(DECL_STR) };
 #undef SHADER_SAMPLERS
 #undef SHADER_UNIFORMS
 
-enum CullMode  { cmNone, cmBack,  cmFront };
+enum CullMode  { cmNone, cmBack,  cmFront, cmMAX };
 enum BlendMode { bmNone, bmAlpha, bmAdd, bmMult, bmPremult, bmMAX };
 
 struct Viewport {
@@ -567,6 +578,12 @@ namespace Core {
     vec4 params;
     vec4 fogParams;
     vec4 contacts[MAX_CONTACTS];
+
+    struct LightStack {
+        vec4 pos[MAX_LIGHTS];
+        vec4 color[MAX_LIGHTS];
+    } lightStack[LIGHT_STACK_SIZE];
+    int lightStackCount;
 
     Texture *whiteTex, *whiteCube, *blackTex, *ditherTex, *noiseTex, *perlinTex;
 
@@ -647,17 +664,19 @@ namespace Core {
 }
 
 #ifdef _GAPI_GL
-    #include "gapi_gl.h"
+    #include "gapi/gl.h"
 #elif _GAPI_D3D9
-    #include "gapi_d3d9.h"
+    #include "gapi/d3d9.h"
+#elif _GAPI_D3D11
+    #include "gapi/d3d11.h"
 #elif _OS_3DS
-    #include "gapi_c3d.h"
+    #include "gapi/c3d.h"
 #elif _GAPI_GU
-    #include "gapi_gu.h"
+    #include "gapi/gu.h"
 #elif _GAPI_GXM
-    #include "gapi_gxm.h"
+    #include "gapi/gxm.h"
 #elif _GAPI_VULKAN
-    #include "gapi_vk.h"
+    #include "gapi/vk.h"
 #endif
 
 #include "texture.h"
@@ -707,9 +726,12 @@ namespace Core {
         LOG("OpenLara (%s)\n", version);
 
         x = y = 0;
+        eyeTex[0] = eyeTex[1] = NULL;
+        lightStackCount = 0;
 
         memset(&support, 0, sizeof(support));
         support.texMinSize = 1;
+        Core::support.derivatives = true;
 
         #ifdef USE_INFLATE
             tinf_init();
@@ -751,11 +773,12 @@ namespace Core {
         eye = 0.0f;
 
         { // init dummy textures
-            uint32 *data = new uint32[SQR(support.texMinSize)];
-            memset(data, 0xFF, SQR(support.texMinSize) * sizeof(data[0]));
+            int size = SQR(support.texMinSize) * 6;
+            uint32 *data = new uint32[size];
+            memset(data, 0xFF, size * sizeof(data[0]));
             whiteTex  = new Texture(support.texMinSize, support.texMinSize, 1, FMT_RGBA, OPT_NEAREST, data);
             whiteCube = new Texture(support.texMinSize, support.texMinSize, 1, FMT_RGBA, OPT_CUBEMAP, data);
-            memset(data, 0x00, SQR(support.texMinSize) * sizeof(data[0]));
+            memset(data, 0x00, size * sizeof(data[0]));
             blackTex  = new Texture(support.texMinSize, support.texMinSize, 1, FMT_RGBA, OPT_NEAREST, data);
             delete[] data;
         }
@@ -874,6 +897,12 @@ namespace Core {
         settings.detail.setLighting (Core::Settings::MEDIUM);
     #endif
 
+    #ifdef _OS_PSC
+        settings.detail.setLighting (Core::Settings::MEDIUM);
+        settings.detail.setShadows  (Core::Settings::LOW);
+        settings.detail.setWater    (Core::Settings::LOW);
+    #endif
+
     #ifdef _OS_3DS
         settings.detail.setFilter   (Core::Settings::MEDIUM);
         settings.detail.setLighting (Core::Settings::LOW);
@@ -901,6 +930,8 @@ namespace Core {
     }
 
     void deinit() {
+        delete eyeTex[0];
+        delete eyeTex[1];
         delete whiteTex;
         delete whiteCube;
         delete blackTex;
@@ -1009,9 +1040,9 @@ namespace Core {
     void setCullMode(CullMode mode) {
         renderState &= ~RS_CULL;
         switch (mode) {
-            case cmNone  : break;
             case cmBack  : renderState |= RS_CULL_BACK;  break;
             case cmFront : renderState |= RS_CULL_FRONT; break;
+            default      : ;
         }
     }
 
@@ -1097,6 +1128,21 @@ namespace Core {
         updateLights();
     }
 
+    void pushLights() {
+        ASSERT(lightStackCount < LIGHT_STACK_SIZE);
+        memcpy(lightStack[lightStackCount].pos,   lightPos,   sizeof(lightPos));
+        memcpy(lightStack[lightStackCount].color, lightColor, sizeof(lightColor));
+        lightStackCount++;
+    }
+
+    void popLights() {
+        ASSERT(lightStackCount > 0);
+        lightStackCount--;
+        memcpy(lightPos,   lightStack[lightStackCount].pos,   sizeof(lightPos));
+        memcpy(lightColor, lightStack[lightStackCount].color, sizeof(lightColor));
+        updateLights();
+    }
+
     void copyTarget(Texture *dst, int xOffset, int yOffset, int x, int y, int width, int height) {
         validateRenderState();
         GAPI::copyTarget(dst, xOffset, yOffset, x, y, width, height);
@@ -1154,33 +1200,6 @@ namespace Core {
 
         stats.dips++;
         stats.tris += range.iCount / 3;
-    }
-
-    PSO* psoCreate(Shader *shader, uint32 renderState, TexFormat colorFormat = FMT_RGBA, TexFormat depthFormat = FMT_DEPTH, const vec4 &clearColor = vec4(0.0f)) {
-        PSO *pso = new PSO();
-        pso->data        = NULL;
-        pso->shader      = shader;
-        pso->renderState = renderState;
-        pso->colorFormat = colorFormat;
-        pso->depthFormat = depthFormat;
-        pso->clearColor  = clearColor;
-        GAPI::initPSO(pso);
-        return pso;
-    }
-
-    void psoDestroy(PSO *pso) {
-        GAPI::deinitPSO(pso);
-        delete pso;
-    }
-
-    void psoBind(PSO *pso) {
-        ASSERT(pso);
-        ASSERT(pso->data);
-        ASSERT(pso->shader);
-        ((Shader*)pso->shader)->setup();
-        GAPI::bindPSO(pso);
-
-        Core::active.pso = pso;
     }
 }
 

@@ -988,6 +988,9 @@ struct MeshBuilder {
         for (int j = 0; j < mesh.fCount; j++) {
             TR::Face &f = mesh.faces[j];
             ASSERT(f.colored || f.flags.texture < level->objectTexturesCount);
+            if (level->version & TR::VER_PSX) {
+                f.colored = false; // PSX version has colored textures
+            }
             TR::TextureInfo &t = f.colored ? (useRoomTex ? whiteRoom : whiteObject) : level->objectTextures[f.flags.texture];
 
             int texAttrib = forceOpaque ? 0 : t.attribute;
@@ -1205,17 +1208,17 @@ struct MeshBuilder {
     #ifndef MERGE_SPRITES
         if (!expand) {
             vec3 pos = vec3(float(x), float(y), float(z));
-            quad[0].coord = coordTransform(pos, vec3( float(sprite.l), float(-sprite.t), 0 ));
-            quad[1].coord = coordTransform(pos, vec3( float(sprite.r), float(-sprite.t), 0 ));
-            quad[2].coord = coordTransform(pos, vec3( float(sprite.r), float(-sprite.b), 0 ));
-            quad[3].coord = coordTransform(pos, vec3( float(sprite.l), float(-sprite.b), 0 ));
+            quad[0].coord = coordTransform(pos, vec3( float(sprite.l), float(-sprite.t), 1 ));
+            quad[1].coord = coordTransform(pos, vec3( float(sprite.r), float(-sprite.t), 1 ));
+            quad[2].coord = coordTransform(pos, vec3( float(sprite.r), float(-sprite.b), 1 ));
+            quad[3].coord = coordTransform(pos, vec3( float(sprite.l), float(-sprite.b), 1 ));
         } else
     #endif
         {
-            quad[0].coord = short4( x0, y0, z, 0 );
-            quad[1].coord = short4( x1, y0, z, 0 );
-            quad[2].coord = short4( x1, y1, z, 0 );
-            quad[3].coord = short4( x0, y1, z, 0 );
+            quad[0].coord = short4( x0, y0, z, 1 );
+            quad[1].coord = short4( x1, y0, z, 1 );
+            quad[2].coord = short4( x1, y1, z, 1 );
+            quad[3].coord = short4( x0, y1, z, 1 );
         }
 
         quad[0].normal = quad[1].normal = quad[2].normal = quad[3].normal = short4( 0, 0, 0, 0 );
@@ -1247,10 +1250,10 @@ struct MeshBuilder {
         int16 maxX = int16(size.x) + minX;
         int16 maxY = int16(size.y) + minY;
 
-        vertices[vCount + 0].coord = short4( minX, minY, 0, 0 );
-        vertices[vCount + 1].coord = short4( maxX, minY, 0, 0 );
-        vertices[vCount + 2].coord = short4( maxX, maxY, 0, 0 );
-        vertices[vCount + 3].coord = short4( minX, maxY, 0, 0 );
+        vertices[vCount + 0].coord = short4( minX, minY, 0, 1 );
+        vertices[vCount + 1].coord = short4( maxX, minY, 0, 1 );
+        vertices[vCount + 2].coord = short4( maxX, maxY, 0, 1 );
+        vertices[vCount + 3].coord = short4( minX, maxY, 0, 1 );
 
         for (int i = 0; i < 4; i++) {
             Vertex &v = vertices[vCount + i];
@@ -1283,15 +1286,15 @@ struct MeshBuilder {
         int16 maxX = int16(size.x) + minX;
         int16 maxY = int16(size.y) + minY;
 
-        vertices[vCount + 0].coord = short4( minX, minY, 0, 0 );
-        vertices[vCount + 1].coord = short4( maxX, minY, 0, 0 );
-        vertices[vCount + 2].coord = short4( maxX, int16(minY + 1), 0, 0 );
-        vertices[vCount + 3].coord = short4( minX, int16(minY + 1), 0, 0 );
+        vertices[vCount + 0].coord = short4( minX, minY, 0, 1 );
+        vertices[vCount + 1].coord = short4( maxX, minY, 0, 1 );
+        vertices[vCount + 2].coord = short4( maxX, int16(minY + 1), 0, 1 );
+        vertices[vCount + 3].coord = short4( minX, int16(minY + 1), 0, 1 );
 
-        vertices[vCount + 4].coord = short4( minX, minY, 0, 0 );
-        vertices[vCount + 5].coord = short4( int16(minX + 1), minY, 0, 0 );
-        vertices[vCount + 6].coord = short4( int16(minX + 1), maxY, 0, 0 );
-        vertices[vCount + 7].coord = short4( minX, maxY, 0, 0 );
+        vertices[vCount + 4].coord = short4( minX, minY, 0, 1 );
+        vertices[vCount + 5].coord = short4( int16(minX + 1), minY, 0, 1 );
+        vertices[vCount + 6].coord = short4( int16(minX + 1), maxY, 0, 1 );
+        vertices[vCount + 7].coord = short4( minX, maxY, 0, 1 );
 
         for (int i = 0; i < 8; i++) {
             Vertex &v = vertices[vCount + i];
@@ -1303,15 +1306,15 @@ struct MeshBuilder {
         addQuad(indices, iCount, vCount, 0, vertices, NULL, false, false); vCount += 4;
         addQuad(indices, iCount, vCount, 0, vertices, NULL, false, false); vCount += 4;
 
-        vertices[vCount + 0].coord = short4( minX, int16(maxY - 1), 0, 0 );
-        vertices[vCount + 1].coord = short4( maxX, int16(maxY - 1), 0, 0 );
-        vertices[vCount + 2].coord = short4( maxX, maxY, 0, 0 );
-        vertices[vCount + 3].coord = short4( minX, maxY, 0, 0 );
+        vertices[vCount + 0].coord = short4( minX, int16(maxY - 1), 0, 1 );
+        vertices[vCount + 1].coord = short4( maxX, int16(maxY - 1), 0, 1 );
+        vertices[vCount + 2].coord = short4( maxX, maxY, 0, 1 );
+        vertices[vCount + 3].coord = short4( minX, maxY, 0, 1 );
 
-        vertices[vCount + 4].coord = short4( int16(maxX - 1), minY, 0, 0 );
-        vertices[vCount + 5].coord = short4( maxX, minY, 0, 0 );
-        vertices[vCount + 6].coord = short4( maxX, maxY, 0, 0 );
-        vertices[vCount + 7].coord = short4( int16(maxX - 1), maxY, 0, 0 );
+        vertices[vCount + 4].coord = short4( int16(maxX - 1), minY, 0, 1 );
+        vertices[vCount + 5].coord = short4( maxX, minY, 0, 1 );
+        vertices[vCount + 6].coord = short4( maxX, maxY, 0, 1 );
+        vertices[vCount + 7].coord = short4( int16(maxX - 1), maxY, 0, 1 );
 
         for (int i = 0; i < 8; i++) {
             Vertex &v = vertices[vCount + i];
@@ -1502,21 +1505,6 @@ struct MeshBuilder {
                 mesh->render(range);
             }
         }
-    }
-
-    void renderModelFull(int modelIndex, bool underwater = false) {
-        Core::setBlendMode(bmPremult);
-        transparent = 0;
-        renderModel(modelIndex, underwater);
-        transparent = 1;
-        renderModel(modelIndex, underwater);
-        Core::setBlendMode(bmAdd);
-        Core::setDepthWrite(false);
-        transparent = 2;
-        renderModel(modelIndex, underwater);
-        Core::setDepthWrite(true);
-        Core::setBlendMode(bmNone);
-        transparent = 0;
     }
 
     void renderShadowBlob() {

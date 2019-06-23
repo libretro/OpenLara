@@ -110,6 +110,7 @@ struct ShaderCache {
         compile(Core::passFilter, Shader::FILTER_DOWNSAMPLE, fx, RS_COLOR_WRITE);
         compile(Core::passFilter, Shader::FILTER_GRAYSCALE,  fx, RS_COLOR_WRITE);
         compile(Core::passFilter, Shader::FILTER_BLUR,       fx, RS_COLOR_WRITE);
+        compile(Core::passFilter, Shader::FILTER_ANAGLYPH,   fx, RS_COLOR_WRITE);
     }
 
     void prepareGUI(int fx) {
@@ -283,6 +284,11 @@ struct AmbientCache {
         // second pass - downsample it
         Core::setDepthTest(false);
 
+        mat4 mProj, mView;
+        mView.identity();
+        mProj = GAPI::ortho(-1, +1, -1, +1, 0, 1);
+        mProj.scale(vec3(1.0f / 32767.0f));
+        Core::setViewProj(mView, mProj);
         game->setShader(Core::passFilter, Shader::FILTER_DOWNSAMPLE);
 
         for (int i = 1; i < 4; i++) {
@@ -444,9 +450,6 @@ struct WaterCache {
         vec3    pos, size;
         Texture *mask;
         Texture *caustics;
-    #ifdef BLUR_CAUSTICS
-        Texture *caustics_tmp;
-    #endif
         Texture *data[2];
 
         Item() {
@@ -530,9 +533,6 @@ struct WaterCache {
             delete[] mf;
 
             caustics = Core::settings.detail.water > Core::Settings::MEDIUM ? new Texture(512, 512, 1, FMT_RGBA, OPT_TARGET | OPT_DEPEND) : NULL;
-            #ifdef BLUR_CAUSTICS
-                caustics_tmp = Core::settings.detail.water > Core::Settings::MEDIUM ? new Texture(512, 512, 1, Texture::RGBA) : NULL;
-            #endif
             
             blank = false;
         }
@@ -541,9 +541,6 @@ struct WaterCache {
             delete data[0];
             delete data[1];
             delete caustics;
-        #ifdef BLUR_CAUSTICS
-            delete caustics_tmp;
-        #endif
             delete mask;
             mask = caustics = data[0] = data[1] = NULL;
         }
@@ -738,23 +735,6 @@ struct WaterCache {
         Core::validateRenderState(); // force clear color for borders
         Core::setViewport(1, 1, item.caustics->width - 1, item.caustics->width - 1); // leave 2px for black border
         game->getMesh()->renderPlane();
-    #ifdef BLUR_CAUSTICS
-        // v blur
-        Core::setTarget(item.caustics_tmp, CLEAR_ALL);
-        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
-        Core::active.shader->setParam(uParam, vec4(0, 1, 1.0f / item.caustics->width, 0));;
-        item.caustics->bind(sDiffuse);
-        game->getMesh()->renderQuad();
-        Core::invalidateTarget(false, true);
-
-        // h blur
-        Core::setTarget(item.caustics, CLEAR_ALL);
-        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
-        Core::active.shader->setParam(uParam, vec4(1, 0, 1.0f / item.caustics->width, 0));;
-        item.caustics_tmp->bind(sDiffuse);
-        game->getMesh()->renderQuad();
-        Core::invalidateTarget(false, true);
-    #endif
     }
 
     void renderRays() {
@@ -944,7 +924,7 @@ struct WaterCache {
         // render reflections frame
             float sign = underwater ? -1.0f : 1.0f;
             game->setClipParams(sign, waterLevel * sign);
-            game->renderView(TR::NO_ROOM, false, roomsCount, roomsList);
+            game->renderView(TR::NO_ROOM, false, false, roomsCount, roomsList);
         }
 
         game->setClipParams(1.0f, NO_CLIP_PLANE);

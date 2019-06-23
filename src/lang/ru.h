@@ -5,7 +5,7 @@
 
 // Thanks: ElikaStudio
 
-#include "glyph_cyr.h"
+#include "glyph_ru.h"
 
 const char *STR_RU[] = { ""
 // help
@@ -24,6 +24,9 @@ const char *STR_RU[] = { ""
     , "НЕТ"
     , "Выкл"
     , "Вкл"
+    , "Выкл"
+    , "Стереопара"
+    , "Анаглиф"
     , "Раздел~енны{и экран"
     , "VR"
     , "Низкое"

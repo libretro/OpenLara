@@ -47,15 +47,15 @@ namespace UI {
 
     int advGlyphsStart;
 
-    #define CYR_MAP           "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜÝÞßáâãäæçêëìíïòôö÷øùúûüýþÿ" "i~"
-    #define CYR_MAP_COUNT     (COUNT(CYR_MAP) - 1)
-    #define CYR_MAP_START     102
-    #define CYR_MAP_UPPERCASE 20
-    #define CHAR_SPR_TILDA    (110 + CYR_MAP_COUNT - 1)
-    #define CHAR_SPR_I        (CHAR_SPR_TILDA - 1)
+    #define RU_MAP              "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜÝÞßáâãäæçêëìíïòôö÷øùúûüýþÿ" "i~"
+    #define RU_GLYPH_COUNT      (COUNT(RU_MAP) - 1)
+    #define RU_GLYPH_START      102
+    #define RU_GLYPH_UPPERCASE  20
+    #define CHAR_SPR_TILDA      (110 + RU_GLYPH_COUNT - 1)
+    #define CHAR_SPR_I          (CHAR_SPR_TILDA - 1)
 
 
-    const static uint8 char_width[110 + CYR_MAP_COUNT] = {
+    const static uint8 char_width[110 + RU_GLYPH_COUNT] = {
         14, 11, 11, 11, 11, 11, 11, 13, 8, 11, 12, 11, 13, 13, 12, 11, 12, 12, 11, 12, 13, 13, 13, 12, 12, 11, // A-Z
         9, 9, 9, 9, 9, 9, 9, 9, 5, 9, 9, 5, 12, 10, 9, 9, 9, 8, 9, 8, 9, 9, 11, 9, 9, 9, // a-z
         12, 8, 10, 10, 10, 10, 10, 9, 10, 10, // 0-9
@@ -83,7 +83,7 @@ namespace UI {
 
     inline int charRemap(char c) {
         if (isCyrillic(c)) {
-            return char_map[CYR_MAP_START + (c - 'À')];
+            return char_map[RU_GLYPH_START + (c - 'À')];
         }
 
         if (c < 11)
@@ -99,47 +99,89 @@ namespace UI {
     }
 
     inline bool upperCase(int index) {
-        return index < 26 || (index >= 110 && (index < 110 + CYR_MAP_UPPERCASE));
+        return index < 26 || (index >= 110 && (index < 110 + RU_GLYPH_UPPERCASE));
     }
 
     void patchGlyphs(TR::Level &level) {
         UI::advGlyphsStart = level.spriteTexturesCount;
 
-        TR::TextureInfo cyrSprites[CYR_MAP_COUNT];
-        for (int i = 0; i < COUNT(cyrSprites); i++) {
+    // init new sprites array with additional sprites
+        TR::TextureInfo *newSprites = new TR::TextureInfo[level.spriteTexturesCount + RU_GLYPH_COUNT + JA_GLYPH_COUNT + GR_GLYPH_COUNT];
+
+    // copy original sprites
+        memcpy(newSprites, level.spriteTextures, sizeof(TR::TextureInfo) * level.spriteTexturesCount);
+    // append russian glyphs
+        TR::TextureInfo *ruSprites = newSprites + level.spriteTexturesCount;
+        for (int i = 0; i < RU_GLYPH_COUNT; i++) {
             int idx = 110 + i; // mapped index
             int w = char_width[idx];
             int h = upperCase(idx) ? 13 : 9;
             int o = 0;
-            char c = CYR_MAP[i];
+            char c = RU_MAP[i];
 
             if (c == 'á' || c == 'ä' || c == '~') h = 14;
             if (c == 'Ö' || c == 'Ù' || c == 'ö' || c == 'ù') { o = 1; h++; }
             if (c == 'ô') { o = 2; h += 2; }
 
-            cyrSprites[i] = TR::TextureInfo(TR::TEX_TYPE_SPRITE, 0, -h + o, w, o, (i % 16) * 16, (i / 16) * 16 + (16 - h), w, h);
+            ruSprites[i] = TR::TextureInfo(TR::TEX_TYPE_SPRITE, 0, -h + o, w, o, (i % 16) * 16, (i / 16) * 16 + (16 - h), w, h);
+        }
+    // append japanese glyphs
+        TR::TextureInfo *jaSprites = newSprites + level.spriteTexturesCount + RU_GLYPH_COUNT;
+        for (int i = 0; i < JA_GLYPH_COUNT; i++) {
+            jaSprites[i] = TR::TextureInfo(TR::TEX_TYPE_SPRITE, 0, -16, 16, 0, (i % 16) * 16, ((i % 256) / 16) * 16, 16, 16);
+        }
+    // append greek glyphs
+        TR::TextureInfo *grSprites = newSprites + level.spriteTexturesCount + RU_GLYPH_COUNT + JA_GLYPH_COUNT;
+        for (int i = 0; i < GR_GLYPH_COUNT; i++) {
+            grSprites[i] = TR::TextureInfo(TR::TEX_TYPE_SPRITE, 0, -16 + GR_GLYPH_BASE - 1, GR_GLYPH_WIDTH[i], 0 + GR_GLYPH_BASE - 1, (i % 16) * 16, ((i % 256) / 16) * 16, GR_GLYPH_WIDTH[i], 16);
         }
 
-        TR::TextureInfo japSprites[JAP_MAP_COUNT];
-        for (int i = 0; i < COUNT(japSprites); i++) {
-            japSprites[i] = TR::TextureInfo(TR::TEX_TYPE_SPRITE, 0, -16, 16, 0, (i % 16) * 16, ((i % 256) / 16) * 16, 16, 16);
-        }
-
-    // init new sprites array with additional sprites
-        TR::TextureInfo *newSprites = new TR::TextureInfo[level.spriteTexturesCount + COUNT(cyrSprites) + COUNT(japSprites)];
-    // copy original sprites
-        memcpy(newSprites, level.spriteTextures, sizeof(TR::TextureInfo) * level.spriteTexturesCount);
-    // append cyrillic sprites
-        memcpy(newSprites + level.spriteTexturesCount, cyrSprites, sizeof(TR::TextureInfo) * COUNT(cyrSprites));
-        level.spriteTexturesCount += COUNT(cyrSprites);
-    // append japanese sprites
-        memcpy(newSprites + level.spriteTexturesCount, japSprites, sizeof(TR::TextureInfo) * COUNT(japSprites));
-        level.spriteTexturesCount += COUNT(japSprites);
+        level.spriteTexturesCount += RU_GLYPH_COUNT + JA_GLYPH_COUNT + GR_GLYPH_COUNT;
 
         delete[] level.spriteTextures;
-        level.spriteTextures = newSprites;
-        TR::gSpriteTextures      = level.spriteTextures;
+        TR::gSpriteTextures      = level.spriteTextures = newSprites;
         TR::gSpriteTexturesCount = level.spriteTexturesCount;
+    }
+
+    bool isWideCharStart(char c) {
+        int lang = Core::settings.audio.language + STR_LANG_EN;
+        if (lang == STR_LANG_JA || lang == STR_LANG_GR)
+            return c == '\x11';
+        return false;
+    }
+
+    uint16 getWideCharGlyph(const char *text) {
+        uint16 index = uint8(*text) << 8;
+        index |= uint8(*(text + 1));
+        if (index == 0xFFFF)
+            return index;
+        index -= 257;
+        if (index > 255) index--;
+        return index;
+    }
+
+    uint16 getWideCharGlyphWidth(uint16 glyph) {
+        int lang = Core::settings.audio.language + STR_LANG_EN;
+        if (lang == STR_LANG_JA) {
+            ASSERT(glyph < JA_GLYPH_COUNT);
+            return 16;
+        }
+        if (lang == STR_LANG_GR) {
+            ASSERT(glyph < GR_GLYPH_COUNT);
+            return GR_GLYPH_WIDTH[glyph];
+        }
+        return 1;
+    }
+
+    int getWideCharGlyphIndex(uint16 glyph) {
+        int lang = Core::settings.audio.language + STR_LANG_EN;
+        glyph += UI::advGlyphsStart + RU_GLYPH_COUNT;
+        if (lang == STR_LANG_JA)
+            return glyph;
+        if (lang == STR_LANG_GR)
+            return glyph + JA_GLYPH_COUNT;
+        ASSERT(false);
+        return glyph;
     }
 
     short2 getLineSize(const char *text) {
@@ -147,9 +189,10 @@ namespace UI {
 
         while (char c = *text++) {
 
-            if (isJapaneseStart(c)) {
-                while (getJapaneseGlyph(text) != 0xFFFF) {
-                    x += 16;
+            if (isWideCharStart(c)) {
+                uint16 glyph;
+                while ((glyph = getWideCharGlyph(text)) != 0xFFFF) {
+                    x += getWideCharGlyphWidth(glyph);
                     text += 2;
                 }
                 text += 2;
@@ -179,9 +222,10 @@ namespace UI {
 
         while (char c = *text++) {
 
-            if (isJapaneseStart(c)) {
-                while (getJapaneseGlyph(text) != 0xFFFF) {
-                    x += 16;
+            if (isWideCharStart(c)) {
+                uint16 glyph;
+                while ((glyph = getWideCharGlyph(text)) != 0xFFFF) {
+                    x += getWideCharGlyphWidth(glyph);
                     text += 2;
                 }
                 text += 2;
@@ -213,24 +257,22 @@ namespace UI {
         uint16 curTile, curClut;
     #endif
 
-    void updateAspect(float aspect) {
-        height = 480.0f;
-        width  = height * aspect;
-        Core::mProj = GAPI::ortho(0.0f, width, height, 0.0f, -128.0f, 127.0f);
-        Core::setViewProj(Core::mView, Core::mProj);
-        Core::active.shader->setParam(uViewProj, Core::mViewProj);
-    }
-
-    void begin() {
+    void begin(float aspect) {
         ensureLanguage(Core::settings.audio.language);
 
+        height = 480.0f;
+        width  = height * aspect;
+
+        Core::mModel.identity();
+        Core::mView.identity();
+        Core::mProj = GAPI::ortho(0.0f, width, height, 0.0f, -128.0f, 127.0f);
+        Core::setViewProj(Core::mView, Core::mProj);
+
         Core::setDepthTest(false);
+        Core::setDepthWrite(false);
         Core::setBlendMode(bmPremult);
         Core::setCullMode(cmNone);
         game->setupBinding();
-
-        Core::mView.identity();
-        Core::mModel.identity();
 
         game->setShader(Core::passGUI, Shader::DEFAULT);
         Core::setMaterial(1, 1, 1, 1);
@@ -247,6 +289,7 @@ namespace UI {
         Core::setCullMode(cmFront);
         Core::setBlendMode(bmNone);
         Core::setDepthTest(true);
+        Core::setDepthWrite(true);
     }
 
     enum ShadeType {
@@ -285,17 +328,24 @@ namespace UI {
             y -= getTextSize(text).y / 2;
         }
 
-        Color32 tColor, bColor, sColor = Color32(48, 12, 0, alpha);
+        Color32 tColor, bColor, sColor;
+        tColor = bColor = sColor = Color32(0, 0, 0, 255);
+
+        switch (level->version & TR::VER_VERSION) {
+            case TR::VER_TR1 : sColor = Color32(48, 12, 0, alpha); break;
+            case TR::VER_TR2 : sColor = Color32(0,  49, 0, alpha); break;
+            case TR::VER_TR3 : sColor = shade == SHADE_ORANGE ? Color32(48, 12, 0, alpha) : Color32(12, 12, 12, alpha); break;
+        }
 
         char lastChar = 0;
 
         while (char c = *text++) {
             // skip japanese chars
-            if (isJapaneseStart(c)) {
-                uint16 index;
-                while ((index = getJapaneseGlyph(text)) != 0xFFFF) {
+            if (isWideCharStart(c)) {
+                uint16 glyph;
+                while ((glyph = getWideCharGlyph(text)) != 0xFFFF) {
                     if (!isShadow) {
-                        index += UI::advGlyphsStart + CYR_MAP_COUNT; 
+                        int index = getWideCharGlyphIndex(glyph); 
                         mesh->addDynSprite(index, short3(x + 1, 1 + y + 1, 0), false, false, sColor, sColor, true);
                         mesh->addDynSprite(index, short3(x - 1, 1 + y - 1, 0), false, false, sColor, sColor, true);
                         mesh->addDynSprite(index, short3(x - 1, 1 + y + 1, 0), false, false, sColor, sColor, true);
@@ -305,11 +355,32 @@ namespace UI {
                         mesh->addDynSprite(index, short3(x    , 1 + y - 1, 0), false, false, sColor, sColor, true);
                         mesh->addDynSprite(index, short3(x    , 1 + y + 1, 0), false, false, sColor, sColor, true);
 
-                        tColor = Color32(252, 236, 136, alpha);
-                        bColor = Color32(160, 104,  56, alpha);
+                        switch (level->version & TR::VER_VERSION) {
+                            case TR::VER_TR1 :
+                                tColor = Color32(252, 236, 136, alpha);
+                                bColor = Color32(160, 104,  56, alpha);
+                                break;
+                            case TR::VER_TR2 :
+                                tColor = Color32(99, 189, 95, alpha);
+                                bColor = Color32( 79, 152,  76, alpha);
+                                break;
+                            case TR::VER_TR3 : 
+                                if (shade == SHADE_NONE) {
+                                    tColor = Color32(255, 255, 255, alpha);
+                                    bColor = Color32(255, 255, 255, alpha);
+                                } else if (shade == SHADE_ORANGE) {
+                                    tColor = Color32(255, 190, 90, alpha);
+                                    bColor = Color32(140,  50, 10, alpha);
+                                } else if (shade == SHADE_GRAY) {
+                                    tColor = Color32(255, 255, 255, alpha);
+                                    bColor = Color32(128, 128, 128, alpha);
+                                }
+                                break;
+                        }
+
                         mesh->addDynSprite(index, short3(x, 1 + y, 0), false, false, tColor, bColor, true);
                     }
-                    x += 16;
+                    x += getWideCharGlyphWidth(glyph);
                     text += 2;
                 }
                 text += 2;
@@ -396,6 +467,10 @@ namespace UI {
                         dy -= 4;
                     }
                 }
+
+                if (c == '(' && idx == 34) { // i with cap, just align it %)
+                    dx -= 1;
+                }
             }
 
             if (invertX) dx += char_width[frame];
@@ -480,8 +555,8 @@ namespace UI {
 
         for (int i = subsPos; i < subsLength; i++) {
 
-            if (isJapaneseStart(subs[i])) {
-                while (getJapaneseGlyph(subs + i + 1) != 0xFFFF) {
+            if (isWideCharStart(subs[i])) {
+                while (getWideCharGlyph(subs + i + 1) != 0xFFFF) {
                     i += 2;
                 }
                 i += 2;
@@ -511,12 +586,16 @@ namespace UI {
     }
 
     void showSubs(StringID str) {
-        if (str == STR_EMPTY || !Core::settings.audio.subtitles)
-            return;
         subsStr        = str;
-        subsLength     = strlen(STR[str]);
-        subsPos        = 0;
         subsTime       = 0.0f;
+
+        if (str == STR_EMPTY || !Core::settings.audio.subtitles) {
+            subsTime = 0.0f;
+            return;
+        }
+
+        subsLength     = int(strlen(STR[str]));
+        subsPos        = 0;
         subsPartTime   = 0;
         subsPartLength = 0;
 
@@ -556,7 +635,7 @@ namespace UI {
                 delete item.animation;
                 pickups.remove(i);
             } else {
-                vec2 target = vec2(w - 48.0f - Core::eye * 16.0f - (i % 4) * 96.0f, UI::height - 48.0f - (i / 4) * 96.0f);
+                vec2 target = vec2(w - 48.0f - (i % 4) * 96.0f, UI::height - 48.0f - (i / 4) * 96.0f);
                 item.pos = item.pos.lerp(target, Core::deltaTime * 5.0f);
                 i++;
             }
@@ -623,18 +702,16 @@ namespace UI {
     #ifdef _NAPI_SOCKET
         textOut(vec2(16, height - 32), command, aLeft, width - 32, 255, UI::SHADE_GRAY);
     #endif
-        float eye = UI::width * Core::eye * 0.02f;
-
         if (hintTime > 0.0f) {
-            textOut(vec2(16 - eye, 32), hintStr, aLeft, width - 32, 255, UI::SHADE_GRAY);
+            textOut(vec2(16, 32), hintStr, aLeft, width - 32, 255, UI::SHADE_GRAY);
         }
 
     #if !defined(__LIBRETRO__) && (defined(_OS_WEB) || defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_MAC) || defined(_OS_RPI))
         if (showHelp) {
-            textOut(vec2(32 - eye, 32), STR_HELP_TEXT, aLeft, width - 32, 255, UI::SHADE_GRAY);
+            textOut(vec2(32, 32), STR_HELP_TEXT, aLeft, width - 32, 255, UI::SHADE_GRAY);
         } else {
             if (helpTipTime > 0.0f) {
-                textOut(vec2(0 - eye, height - 16), STR_HELP_PRESS, aCenter, width, 255, UI::SHADE_ORANGE);
+                textOut(vec2(0, height - 16), STR_HELP_PRESS, aCenter, width, 255, UI::SHADE_ORANGE);
             }
         }
     #endif
@@ -649,12 +726,10 @@ namespace UI {
     void renderSubs() {
         if (!Core::settings.audio.subtitles) return;
 
-        float eye = UI::width * Core::eye * 0.02f;
-
         if (subsTime > 0.0f) {
             const char *subs = STR[subsStr] + subsPos;
-            textOut(vec2(16 - eye, height - 48) + vec2(1, 1), subs, aCenterV, width - 32, 255, UI::SHADE_GRAY, true);
-            textOut(vec2(16 - eye, height - 48), subs, aCenterV, width - 32, 255, UI::SHADE_GRAY);
+            textOut(vec2(16, height - 48) + vec2(1, 1), subs, aCenterV, width - 32, 255, UI::SHADE_GRAY, true);
+            textOut(vec2(16, height - 48), subs, aCenterV, width - 32, 255, UI::SHADE_GRAY);
         }
     }
 
@@ -675,7 +750,7 @@ namespace UI {
 
     void setupInventoryShading(vec3 offset) {
         Core::mView.identity();
-        Core::mProj = GAPI::perspective(1.0f, 1.0f, 1.0f, 2.0f);
+        Core::mProj = GAPI::perspective(1.0f, 1.0f, 1.0f, 2.0f, 0.0f);
         Core::mLightProj = Core::mProj * Core::mView;
 
         game->setShader(Core::passCompose, Shader::ENTITY, false, false);
@@ -710,6 +785,7 @@ namespace UI {
 
         mat4 mView = Core::mView;
         Core::mView.scale(vec3(0.5f));
+        Core::mView.translate(vec3(-Core::eye * CAM_EYE_SEPARATION, 0.0f, 0.0f));
         Core::setViewProj(Core::mView, Core::mProj);
 
         vec3 lightOffset = vec3(UI::width - 64.0f, UI::height - 64.0f, 2048.0f);
@@ -718,8 +794,8 @@ namespace UI {
         Basis joints[MAX_SPHERES];
 
         Core::setDepthTest(true);
+        Core::setDepthWrite(true);
 
-        MeshBuilder *mesh = game->getMesh();
         for (int i = 0; i < pickups.length; i++) {
             const PickupItem &item = pickups[i];
 
@@ -741,7 +817,6 @@ namespace UI {
             matrix.rotateY(item.time * PI * 0.5f);
 
             item.animation->getJoints(matrix, -1, true, joints);
-            Core::setBasis(joints, item.animation->model->mCount);
 
             float alpha = 1.0f - min(PICKUP_SHOW_TIME - item.time, 1.0f);
             alpha *= alpha;
@@ -750,10 +825,11 @@ namespace UI {
 
             Core::setMaterial(1.0f, 0.0f, 0.0f, alpha);
 
-            mesh->renderModelFull(item.modelIndex - 1);
+            game->renderModelFull(item.modelIndex - 1, false, joints);
         }
 
         Core::setDepthTest(false);
+        Core::setDepthWrite(false);
 
         Core::setViewProj(mView, Core::mProj);
         game->setShader(Core::passGUI, Shader::DEFAULT);

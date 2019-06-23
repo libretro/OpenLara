@@ -487,6 +487,8 @@ struct vec4 {
     vec4(const vec3 &xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
     vec4(const vec2 &xy, const vec2 &zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
 
+    inline float& operator [] (int index) const { ASSERT(index >= 0 && index <= 3); return ((float*)this)[index]; }
+
     inline bool operator == (const vec4 &v) const { return x == v.x && y == v.y && z == v.z && w == v.w; }
     inline bool operator != (const vec4 &v) const { return !(*this == v); }
 
@@ -518,6 +520,9 @@ struct quat {
         z = axis.z * s;
         w = c;
     }
+
+    inline bool operator == (const quat &q) const { return x == q.x && y == q.y && z == q.z && w == q.w; }
+    inline bool operator != (const quat &v) const { return !(*this == v); }
 
     quat operator - () const {
         return quat(-x, -y, -z, -w);
@@ -614,6 +619,7 @@ struct mat4 {
 
     enum ProjRange {
         PROJ_NEG_POS,
+        PROJ_NEG_ZERO,
         PROJ_ZERO_POS,
     };
 
@@ -645,45 +651,91 @@ struct mat4 {
         e33 = 1.0f;
     }
 
-    mat4(ProjRange range, float l, float r, float b, float t, float znear, float zfar) {
+    void ortho(ProjRange range, float l, float r, float b, float t, float znear, float zfar, bool rotate90 = false) {
         identity();
-        e00 = 2.0f / (r - l);
-        e11 = 2.0f / (t - b);
-        e22 = 2.0f / (znear - zfar);
+
+        if (rotate90) {
+            e00 = e11 = 0.0f;
+            e01 = 2.0f / (r - l);
+            e10 = 2.0f / (b - t);
+        } else {
+            e00 = 2.0f / (r - l);
+            e11 = 2.0f / (t - b);
+        }
+
         e03 = (l + r) / (l - r);
         e13 = (t + b) / (b - t);
+
         switch (range) {
             case PROJ_NEG_POS :
-                e23 = (zfar + znear) / (znear - zfar);
+                e22 = 2.0f / (znear - zfar);
+                e23 = (znear + zfar) / (znear - zfar);
+                break;
+            case PROJ_NEG_ZERO :
+                e22 = 1.0f / (znear - zfar);
+                e23 = (znear + zfar) / (znear - zfar) * 0.5f - 0.5f;
                 break;
             case PROJ_ZERO_POS :
+                e22 = 2.0f / (znear - zfar);
                 e23 = znear / (znear - zfar);
                 break;
         }
     }
 
-    mat4(ProjRange range, float fov, float aspect, float znear, float zfar) {
-        float k = 1.0f / tanf(fov * 0.5f * DEG2RAD);
+    void frustum(ProjRange range, float l, float r, float b, float t, float znear, float zfar, bool rotate90 = false) {
         identity();
-        if (aspect >= 1.0f) {
-            e00 = k / aspect;
-            e11 = k;
+
+        if (rotate90) {
+            e00 = e11 = 0.0f;
+            e01 = 2.0f * znear / (r - l);
+            e10 = 2.0f * znear / (b - t);
         } else {
-            e00 = k;
-            e11 = k * aspect;
+            e00 = 2.0f * znear / (r - l);
+            e11 = 2.0f * znear / (t - b);
         }
-        e33 = 0.0f;
+
+        e02 = (r + l) / (r - l);
+        e12 = (t + b) / (t - b);
         e32 = -1.0f;
+        e33 = 0.0f;
+
         switch (range) {
             case PROJ_NEG_POS :
                 e22 = (znear + zfar) / (znear - zfar);
                 e23 = 2.0f * zfar * znear / (znear - zfar);
+                break;
+            case PROJ_NEG_ZERO :
+                e22 = znear / (znear - zfar);
+                e23 = zfar * znear / (znear - zfar);
                 break;
             case PROJ_ZERO_POS :
                 e22 = zfar / (znear - zfar);
                 e23 = znear * e22;
                 break;
         }
+    }
+
+    void perspective(ProjRange range, float fov, float aspect, float znear, float zfar, float eye = 0.0f, bool rotate90 = false) {
+        float y = tanf(fov * 0.5f * DEG2RAD) * znear;
+        float x = y;
+
+        float eyeX, eyeY;
+        if (rotate90) {
+            eyeX = 0.0f;
+            eyeY = -eye;
+            aspect = 1.0f / aspect;
+        } else {
+            eyeX = eye;
+            eyeY = 0.0f;
+        }
+
+        if (aspect >= 1.0f) {
+            x = y * aspect;
+        } else {
+            y /= aspect;
+        }
+
+        frustum(range, -x - eyeX, x - eyeX, -y - eyeY, y - eyeY, znear, zfar, rotate90);
     }
 
     mat4(const vec3 &from, const vec3 &at, const vec3 &up) {
@@ -1046,6 +1098,8 @@ struct short2 {
 
     short2() {}
     short2(int16 x, int16 y) : x(x), y(y) {}
+
+    inline bool operator == (const short2 &v) const { return x == v.x && y == v.y; }
 };
 
 struct short3 {
@@ -1058,6 +1112,7 @@ struct short3 {
 
     short3 operator + (const short3 &v) const { return short3(x + v.x, y + v.y, z + v.z); }
     short3 operator - (const short3 &v) const { return short3(x - v.x, y - v.y, z - v.z); }
+    inline bool operator == (const short3 &v) const { return x == v.x && y == v.y && z == v.z; }
 };
 
 struct short4 {
@@ -1066,7 +1121,11 @@ struct short4 {
     short4() {}
     short4(int16 x, int16 y, int16 z, int16 w) : x(x), y(y), z(z), w(w) {}
 
+    operator vec2()   const { return vec2((float)x, (float)y); };
     operator vec3()   const { return vec3((float)x, (float)y, (float)z); };
+    operator vec4()   const { return vec4((float)x, (float)y, (float)z, (float)w); };
+
+    operator short2() const { return *((short2*)this); }
     operator short3() const { return *((short3*)this); }
 
     inline bool operator == (const short4 &v) const { return x == v.x && y == v.y && z == v.z && w == v.w; }
@@ -1387,6 +1446,28 @@ union Color16 { // RGBA5551
 };
 
 
+namespace String {
+
+    void toLower(char *str) {
+        if (!str) return;
+
+        while (char &c = *str++) {
+            if (c >= 'A' && c <= 'Z')
+                c -= 'Z' - 'z';
+        }
+    }
+
+    char* copy(const char *str) {
+        if (str == NULL) {
+            return NULL;
+        }
+        char *res = new char[strlen(str) + 1];
+        strcpy(res, str);
+        return res;
+    }
+}
+
+
 struct Stream;
 
 extern void osCacheWrite (Stream *stream);
@@ -1419,10 +1500,7 @@ struct Stream {
     int         bufferIndex;
 
     Stream(const char *name, const void *data, int size, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data((char*)data), name(NULL), size(size), pos(0), buffer(NULL) {
-        if (name) {
-            this->name = new char[strlen(name) + 1];
-            strcpy(this->name, name);
-        }
+        this->name = String::copy(name);
     }
 
     Stream(const char *name, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data(NULL), name(NULL), size(-1), pos(0), buffer(NULL) {
@@ -1447,10 +1525,7 @@ struct Stream {
 
         if (!f) {
             #ifdef _OS_WEB
-                if (name) {
-                    this->name = new char[strlen(name) + 1];
-                    strcpy(this->name, name);
-                }
+                this->name = String::copy(name);
                 osDownload(this);
             #else
                 LOG("error loading file \"%s\"\n", name);
@@ -1469,10 +1544,7 @@ struct Stream {
 
             bufferIndex = -1;
 
-            if (name) {
-                this->name = new char[strlen(name) + 1];
-                strcpy(this->name, name);
-            }
+            this->name = String::copy(name);
 
             if (callback)
                 callback(this, userData);
@@ -1906,20 +1978,6 @@ struct BitStream {
         readU(count);
     }
 };
-
-
-namespace String {
-
-    void toLower(char *str) {
-        if (!str) return;
-
-        while (char &c = *str++) {
-            if (c >= 'A' && c <= 'Z')
-                c -= 'Z' - 'z';
-        }
-    }
-
-}
 
 
 template <int N>

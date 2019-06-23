@@ -164,7 +164,8 @@ namespace GAPI {
                     break;
                 case passShadow : 
                     switch (type) {
-                        case 3  : vSrc = SHADER ( shadow_entity, v );  fSrc = SHADER ( shadow_entity, f ); break;
+                        case 3  :
+                        case 4  : vSrc = SHADER ( shadow_entity, v );  fSrc = SHADER ( shadow_entity, f ); break;
                         default : ASSERT(false);
                     }
                     break;
@@ -176,6 +177,7 @@ namespace GAPI {
                         default : ASSERT(false);
                     }
                     break;
+                case passSky   : vSrc = SHADER ( gui, v );  fSrc = SHADER ( gui, f ); break; // TODO
                 case passWater : 
                     switch (type) {
                         case 0  : vSrc = SHADER ( water_drop,     v );  fSrc = SHADER ( water_drop,     f ); break;
@@ -538,11 +540,15 @@ namespace GAPI {
     }
 
     mat4 ortho(float l, float r, float b, float t, float znear, float zfar) {
-        return mat4(mat4::PROJ_ZERO_POS, l, r, b, t, znear, zfar);
+        mat4 m;
+        m.ortho(mat4::PROJ_ZERO_POS, l, r, b, t, znear, zfar);
+        return m;
     }
 
-    mat4 perspective(float fov, float aspect, float znear, float zfar) {
-        return mat4(mat4::PROJ_ZERO_POS, fov, aspect, znear, zfar);
+    mat4 perspective(float fov, float aspect, float znear, float zfar, float eye) {
+        mat4 m;
+        m.perspective(mat4::PROJ_ZERO_POS, fov, aspect, znear, zfar, eye);
+        return m;
     }
 
     bool beginFrame() {
@@ -771,22 +777,6 @@ namespace GAPI {
         surface->Release();
 
         return vec4(float(c.z), float(c.y), float(c.x), float(c.w)) * (1.0f / 255.0f);
-    }
-
-    void initPSO(PSO *pso) {
-        ASSERT(pso);
-        ASSERT(pso && pso->data == NULL);
-        pso->data = &pso;
-    }
-
-    void deinitPSO(PSO *pso) {
-        ASSERT(pso);
-        ASSERT(pso->data != NULL);
-        pso->data = NULL;
-    }
-
-    void bindPSO(const PSO *pso) {
-        //
     }
 }
 

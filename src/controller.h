@@ -6,7 +6,7 @@
 #include "mesh.h"
 #include "animation.h"
 
-#define GRAVITY     (6.0f * 30.0f)
+#define GRAVITY     6.0f
 #define SPRITE_FPS  10.0f
 
 #define MAX_LAYERS  4
@@ -72,9 +72,10 @@ struct IGame {
     virtual void setupBinding() {}
     virtual void getVisibleRooms(int *roomsList, int &roomsCount, int from, int to, const vec4 &viewPort, bool water, int count = 0) {}
     virtual void renderEnvironment(int roomIndex, const vec3 &pos, Texture **targets, int stride = 0, Core::Pass pass = Core::passAmbient) {}
+    virtual void renderModelFull(int modelIndex, bool underwater, Basis *joints) {}
     virtual void renderCompose(int roomIndex) {}
-    virtual void renderView(int roomIndex, bool water, int roomsCount = 0, int *roomsList = NULL) {}
-    virtual void renderGame(bool showUI) {}
+    virtual void renderView(int roomIndex, bool water, bool showUI, int roomsCount = 0, int *roomsList = NULL) {}
+    virtual void renderGame(bool showUI, bool invBG) {}
     virtual void setEffect(Controller *controller, TR::Effect::Type effect) {}
 
     virtual void checkTrigger(Controller *controller, bool heavy) {}
@@ -621,7 +622,9 @@ struct Controller {
         return e.isEnemy() ||
                e.isVehicle() ||
                e.isDoor() ||
-               e.type == TR::Entity::SCION_HOLDER;
+               e.type == TR::Entity::SCION_HOLDER ||
+               e.type == TR::Entity::TRAP_BOULDER ||
+               e.type == TR::Entity::MUTANT_EGG_SMALL;
     }
 
     virtual bool activate() {
@@ -776,7 +779,7 @@ struct Controller {
     }
 
     static inline void applyGravity(float &speed) {
-        speed += (speed < 128.0f ? GRAVITY : 30.0f) * Core::deltaTime;
+        speed += (speed < 128.0f ? GRAVITY : 1.0f) * (30.0f * Core::deltaTime);
     }
 
     bool alignToWall(float offset = 0.0f, int quadrant = -1, int maxDist = 0, int maxWidth = 0) {
@@ -1323,7 +1326,9 @@ struct Controller {
     }
 
     mat4 getMatrix() {
-        if (level->isCutsceneLevel() && (getEntity().isActor() || getEntity().isLara())) 
+        const TR::Entity &e = getEntity();
+
+        if (level->isCutsceneLevel() && (e.isActor() || e.isLara()) && e.type != TR::Entity::CUT_4) 
             return level->cutMatrix;
 
         if (!lockMatrix) {

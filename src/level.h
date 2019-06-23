@@ -8,10 +8,11 @@
 #include "enemy.h"
 #include "camera.h"
 #include "lara.h"
-#include "trigger.h"
+#include "objects.h"
 #include "inventory.h"
 #include "savegame.h"
 #include "network.h"
+#include "extension.h"
 
 #if defined(_DEBUG) && defined(_GAPI_GL) && !defined(_GAPI_GLES)
     #define DEBUG_RENDER
@@ -41,7 +42,7 @@ struct Level : IGame {
 
     Lara        *players[2], *player;
     Camera      *camera;
-    Texture     *shadow;
+    Texture     *shadow[2];
 
     struct Params {
         float   time;
@@ -62,6 +63,7 @@ struct Level : IGame {
     bool needRedrawTitleBG;
     bool needRedrawReflections;
     bool needRenderGame;
+    bool needRenderInventory;
     bool showStats;
     bool skyIsVisible;
 
@@ -95,6 +97,8 @@ struct Level : IGame {
         else
     #endif
         id = (level.isEnd() || level.isHome()) ? level.getTitleId() : TR::LevelID(level.id + 1);
+
+        TR::isGameEnded = level.isEnd();
 
         if (!level.isTitle() && loadSlot == -1) {
         // update statistics info for current level
@@ -347,14 +351,16 @@ struct Level : IGame {
     }
 
     void initShadow() {
-        delete shadow;
+        delete shadow[0];
+        delete shadow[1];
+        shadow[0] = shadow[1] = NULL;
+
         if (Core::settings.detail.shadows > Core::Settings::LOW) {
             if (level.isTitle())
-                shadow = new Texture(32, 32, 1, FMT_SHADOW); // init dummy shadow map
+                shadow[0] = new Texture(32, 32, 1, FMT_SHADOW); // init dummy shadow map
             else
-                shadow = new Texture(SHADOW_TEX_SIZE, SHADOW_TEX_SIZE, 1, FMT_SHADOW, OPT_TARGET);
-        } else
-            shadow = NULL;
+                shadow[0] = new Texture(SHADOW_TEX_SIZE, SHADOW_TEX_SIZE, 1, FMT_SHADOW, OPT_TARGET);
+        }
     }
 
     virtual void applySettings(const Core::Settings &settings) {
@@ -586,7 +592,10 @@ struct Level : IGame {
         Core::whiteTex->bind(sMask);
         Core::whiteTex->bind(sReflect);
         Core::whiteCube->bind(sEnvironment);
-        if (shadow) shadow->bind(sShadow);
+
+        Texture *shadowMap = shadow[player ? player->camera->cameraIndex : 0];
+        if (shadowMap) shadowMap->bind(sShadow);
+
         Core::basis.identity();
     }
 
@@ -606,11 +615,46 @@ struct Level : IGame {
             Core::pass = pass;
             Texture *target = (targets[0]->opt & OPT_CUBEMAP) ? targets[0] : targets[i * stride];
             Core::setTarget(target, NULL, RT_CLEAR_COLOR | RT_CLEAR_DEPTH | RT_STORE_COLOR, i);
-            renderView(rIndex, false);
+            renderView(rIndex, false, false);
         }
 
         Core::pass = tmpPass;
         Core::eye  = tmpEye;
+    }
+
+    virtual void renderModelFull(int modelIndex, bool underwater, Basis *joints) {
+        vec4 ambient[6] = { vec4(0), vec4(0), vec4(0), vec4(0), vec4(0), vec4(0) };
+
+        // opaque
+        Core::setBlendMode(bmPremult); // inventory items has fade-out/in alpha
+        mesh->transparent = 0;
+        setShader(Core::passCompose, Shader::ENTITY, underwater, false);
+        Core::setBasis(joints, level.models[modelIndex].mCount);
+        Core::active.shader->setParam(uMaterial, Core::active.material);
+        Core::active.shader->setParam(uAmbient, ambient[0], 6);
+        Core::updateLights();
+        mesh->renderModel(modelIndex, underwater);
+        // transparent
+        mesh->transparent = 1;
+        setShader(Core::passCompose, Shader::ENTITY, underwater, true);
+        Core::setBasis(joints, level.models[modelIndex].mCount);
+        Core::active.shader->setParam(uMaterial, Core::active.material);
+        Core::active.shader->setParam(uAmbient, ambient[0], 6);
+        Core::updateLights();
+        mesh->renderModel(modelIndex, underwater);
+        // additive
+        Core::setBlendMode(bmAdd);
+        Core::setDepthWrite(false);
+        mesh->transparent = 2;
+        setShader(Core::passCompose, Shader::ENTITY, underwater, false);
+        Core::setBasis(joints, level.models[modelIndex].mCount);
+        Core::active.shader->setParam(uMaterial, Core::active.material);
+        Core::active.shader->setParam(uAmbient, ambient[0], 6);
+        Core::updateLights();
+        mesh->renderModel(modelIndex, underwater);
+        Core::setDepthWrite(true);
+        Core::setBlendMode(bmNone);
+        mesh->transparent = 0;
     }
     
     virtual void setEffect(Controller *controller, TR::Effect::Type effect) {
@@ -877,7 +921,7 @@ struct Level : IGame {
         mesh = new MeshBuilder(&level, atlasRooms);
         initEntities();
 
-        shadow       = NULL;
+        shadow[0] = shadow[1] = NULL;
         camera       = NULL;
         ambientCache = NULL;
         waterCache   = NULL;
@@ -945,7 +989,8 @@ struct Level : IGame {
         for (int i = 0; i < level.entitiesCount; i++)
             delete (Controller*)level.entities[i].controller;
 
-        delete shadow;
+        delete shadow[0];
+        delete shadow[1];
         delete ambientCache;
         delete waterCache;
         delete zoneCache;
@@ -1196,15 +1241,20 @@ struct Level : IGame {
     #define ATLAS_PAGE_GLYPHS 8192
 
     TR::Tile32 *tileData;
-    uint8 *glyphsCyr;
-    uint8 *glyphsJap;
+    uint8 *glyphsRU;
+    uint8 *glyphsJA;
+    uint8 *glyphsGR;
 
     static int getAdvGlyphPage(int index) {
         index -= UI::advGlyphsStart;
-        if (index >= CYR_MAP_COUNT) {
-            return 1 + (index - CYR_MAP_COUNT) / 256;
+        if (index >= RU_GLYPH_COUNT) {
+            index -= RU_GLYPH_COUNT;
+            if (index >= JA_GLYPH_COUNT)
+                return 3; // GR
+            else
+                return 1 + index / 256; // JA
         }
-        return 0;
+        return 0; // RU
     }
 
     static void fillCallback(Atlas *atlas, int id, int tileX, int tileY, int atlasWidth, int atlasHeight, Atlas::Tile &tile, void *userData, void *data) {
@@ -1268,7 +1318,15 @@ struct Level : IGame {
                         short4 uv = tile.uv;
                         uv.y -= offset;
                         uv.w -= offset;
-                        Color32 *glyphsData = (Color32*)(page == 0 ? owner->glyphsCyr : (owner->glyphsJap + (page - 1) * 256 * 256 * 4));
+                        Color32 *glyphsData = NULL;
+
+                        switch (page) {
+                            case 0 : glyphsData = (Color32*)owner->glyphsRU; break;
+                            case 1 :
+                            case 2 : glyphsData = (Color32*)owner->glyphsJA + (page - 1) * 256 * 256; break;
+                            case 3 : glyphsData = (Color32*)owner->glyphsGR; break;
+                        }
+
                         level->fillObjectTexture32(owner->tileData, glyphsData, uv, tile.tex);
                     }
                 }
@@ -1451,14 +1509,20 @@ struct Level : IGame {
 
         {
             uint32 glyphsW, glyphsH;
-            Stream stream(NULL, GLYPH_CYR, size_GLYPH_CYR);
-            glyphsCyr = Texture::LoadPNG(stream, glyphsW, glyphsH);
+            Stream stream(NULL, GLYPH_RU, size_GLYPH_RU);
+            glyphsRU = Texture::LoadPNG(stream, glyphsW, glyphsH);
         }
 
         {
             uint32 glyphsW, glyphsH;
-            Stream stream(NULL, GLYPH_JAP, size_GLYPH_JAP);
-            glyphsJap = Texture::LoadBMP(stream, glyphsW, glyphsH);
+            Stream stream(NULL, GLYPH_JA, size_GLYPH_JA);
+            glyphsJA = Texture::LoadBMP(stream, glyphsW, glyphsH);
+        }
+
+        {
+            uint32 glyphsW, glyphsH;
+            Stream stream(NULL, GLYPH_GR, size_GLYPH_GR);
+            glyphsGR = Texture::LoadBMP(stream, glyphsW, glyphsH);
         }
 
     // repack texture tiles
@@ -1511,7 +1575,7 @@ struct Level : IGame {
             sAtlas->add(level.objectTexturesCount + i, uv, &t);
         }
         // add common textures
-        const short2 CommonTexOffset[] = { short2(0, 4), short2(0, 4), short2(0, 4), short2(4, 4), short2(0, 0), short2(0, 0), short2(0, 0) };
+        const short2 CommonTexOffset[] = { short2(1, 5), short2(1, 5), short2(1, 5), short2(5, 5), short2(1, 1), short2(1, 1), short2(1, 1) };
         ASSERT(COUNT(CommonTexOffset) == CTEX_MAX);
         memset(CommonTex, 0, sizeof(CommonTex));
         for (int i = 0; i < CTEX_MAX; i++) {
@@ -1528,17 +1592,21 @@ struct Level : IGame {
         atlasSprites = sAtlas->pack(true);
         atlasGlyphs  = gAtlas->pack(false);
 
+    #ifdef _OS_3DS
         ASSERT(atlasRooms->width   <= 1024 && atlasRooms->height   <= 1024);
         ASSERT(atlasObjects->width <= 1024 && atlasObjects->height <= 1024);
         ASSERT(atlasSprites->width <= 1024 && atlasSprites->height <= 1024);
+    #endif
 
         delete[] tileData;
         tileData = NULL;
 
-        delete[] glyphsCyr;
-        delete[] glyphsJap;
-        glyphsCyr = NULL;
-        glyphsJap = NULL;
+        delete[] glyphsRU;
+        delete[] glyphsJA;
+        delete[] glyphsGR;
+        glyphsRU = NULL;
+        glyphsJA = NULL;
+        glyphsGR = NULL;
 
         atlasRooms->setFilterQuality(Core::settings.detail.filter);
         atlasObjects->setFilterQuality(Core::settings.detail.filter);
@@ -1883,23 +1951,33 @@ struct Level : IGame {
         if (isModel) { // model
             ASSERT(controller->intensity >= 0.0f);
 
-            setMainLight(controller);
+            setMainLight(level.isCutsceneLevel() ? player : controller);
             setRoomParams(roomIndex, type, 1.0f, controller->intensity, controller->specular, 1.0f, mesh->transparent == 1);
 
             vec3 pos = controller->getPos();
             if (ambientCache) {
-                if (!entity.isDoor() && !entity.isBlock()) { // no advanced ambient lighting for secret (all) doors and blocks
+                if (!entity.isDoor() && !entity.isBlock() && !entity.isPickup()) { // no advanced ambient lighting for secret (all) doors and blocks
                     AmbientCache::Cube cube;
                     ambientCache->getAmbient(roomIndex, pos, cube);
-                    if (cube.status == AmbientCache::Cube::READY)
+                    if (cube.status == AmbientCache::Cube::READY) {
                         memcpy(controller->ambient, cube.colors, sizeof(cube.colors)); // store last calculated ambient into controller
+                    }
                 } else {
-                    controller->ambient[0] =
-                    controller->ambient[1] =
-                    controller->ambient[2] =
-                    controller->ambient[3] =
-                    controller->ambient[4] =
-                    controller->ambient[5] = vec4(Core::active.material.y);
+                    if (entity.isPickup()) {
+                        controller->ambient[0] =
+                        controller->ambient[1] =
+                        controller->ambient[5] =
+                        controller->ambient[4] = vec4(Core::active.material.y * 0.8f);
+                        controller->ambient[2] = vec4(Core::active.material.y * 0.1f);
+                        controller->ambient[3] = vec4(Core::active.material.y);
+                    } else {
+                        controller->ambient[0] =
+                        controller->ambient[1] =
+                        controller->ambient[2] =
+                        controller->ambient[3] =
+                        controller->ambient[4] =
+                        controller->ambient[5] = vec4(Core::active.material.y);
+                    }
                 }
                 Core::active.shader->setParam(uAmbient, controller->ambient[0], 6);
             }
@@ -2076,6 +2154,13 @@ struct Level : IGame {
             Input::down[ikY] = false;
         }
     #endif        
+    #endif
+
+    #ifdef GEOMETRY_EXPORT
+        if (Input::down[ikF1]) {
+            Extension::exportGeometry(this, atlasRooms, atlasObjects, atlasSprites);
+            Input::down[ikF1] = false;
+        }
     #endif
     }
 
@@ -2316,7 +2401,7 @@ struct Level : IGame {
         Core::fogParams = oldFog;
     }
 
-    virtual void renderView(int roomIndex, bool water, int roomsCount = 0, int *roomsList = NULL) {
+    virtual void renderView(int roomIndex, bool water, bool showUI, int roomsCount = 0, int *roomsList = NULL) {
         PROFILE_MARKER("VIEW");
 
         if (water && waterCache)
@@ -2419,6 +2504,10 @@ struct Level : IGame {
             waterCache->blitTexture(screen);
         }
 
+        if (showUI) {
+            renderUI();
+        }
+
         Core::pass = pass;
     }
 
@@ -2436,7 +2525,7 @@ struct Level : IGame {
 
         Core::mViewInv  = mat4(pos, pos + dir, up);
         Core::mView     = Core::mViewInv.inverseOrtho();
-        Core::mProj     = GAPI::perspective(90, 1.0f, camera->znear, camera->zfar);
+        Core::mProj     = GAPI::perspective(90, 1.0f, 32.0f, 45.0f * 1024.0f, 0.0f);
         Core::mViewProj = Core::mProj * Core::mView;
         Core::viewPos   = Core::mViewInv.offset().xyz();
 
@@ -2451,7 +2540,7 @@ struct Level : IGame {
 
         Core::mViewInv = mat4(player->mainLightPos, pos, vec3(0, -1, 0));
         Core::mView    = Core::mViewInv.inverseOrtho();
-        Core::mProj    = GAPI::perspective(90.0f, 1.0f, znear, zfar);
+        Core::mProj    = GAPI::perspective(90.0f, 1.0f, znear, zfar, 0.0f);
 
         Core::mLightProj = Core::mProj * Core::mView;
 
@@ -2467,7 +2556,7 @@ struct Level : IGame {
         camera->frustum->calcPlanes(Core::mViewProj);
 
         setup();
-        renderView(roomIndex, false);
+        renderView(roomIndex, false, false);
     }
 /*
     void renderShadowEntity(int index, Controller *controller, Controller *player) {
@@ -2569,7 +2658,7 @@ struct Level : IGame {
         return count;
     }
 */
-    void renderShadows(int roomIndex) {
+    void renderShadows(int roomIndex, Texture *shadowMap) {
         PROFILE_MARKER("PASS_SHADOW");
 
         if (Core::settings.detail.shadows == Core::Settings::LOW)
@@ -2581,11 +2670,11 @@ struct Level : IGame {
         Core::eye = 0.0f;
 
         Core::pass = Core::passShadow;
-        shadow->unbind(sShadow);
-        bool colorShadow = shadow->fmt == FMT_RGBA ? true : false;
+        shadowMap->unbind(sShadow);
+        bool colorShadow = shadowMap->fmt == FMT_RGBA ? true : false;
         if (colorShadow)
             Core::setClearColor(vec4(1.0f));
-        Core::setTarget(shadow, NULL, RT_CLEAR_DEPTH | (colorShadow ? (RT_CLEAR_COLOR | RT_STORE_COLOR) : RT_STORE_DEPTH));
+        Core::setTarget(shadowMap, NULL, RT_CLEAR_DEPTH | (colorShadow ? (RT_CLEAR_COLOR | RT_STORE_COLOR) : RT_STORE_DEPTH));
         //Core::setCullMode(cmBack);
         Core::validateRenderState();
 
@@ -2813,7 +2902,7 @@ struct Level : IGame {
     }
     #endif
 
-    void setViewport(int view, int eye, bool isUI) {
+    float setViewport(int view, int eye) {
         int vX = Core::x;
         int vY = Core::y;
         int vW = Core::width;
@@ -2829,61 +2918,62 @@ struct Level : IGame {
         }
 
         Viewport &vp = Core::viewportDef;
+        vp = Viewport(vX, vY, vW, vH);
 
-        if (players[1] != NULL) {
+        if (players[1] != NULL && view >= 0) {
             vp = Viewport(vX + vW / 2 * view, vY, vW / 2, vH);
-            if (Core::settings.detail.stereo != Core::Settings::STEREO_SPLIT)
+
+            if (Core::settings.detail.stereo != Core::Settings::STEREO_SPLIT) {
                 aspect *= 0.5f;
-        } else
-            vp = Viewport(vX, vY, vW, vH); 
-
-
-        Core::eye = float(eye);
-
-    #ifdef _OS_3DS
-        Core::eye *= osGet3DSliderState() / 3.0f;
-
-        if (eye <= 0) {
-            GAPI::curTarget = GAPI::defTarget[0];
-        } else {
-            GAPI::curTarget = GAPI::defTarget[1];
+            }
         }
 
-        C3D_FrameDrawOn(GAPI::curTarget);
-    #else
-        if (Core::settings.detail.stereo != Core::Settings::STEREO_VR) {
+        if (Core::settings.detail.stereo == Core::Settings::STEREO_SBS) {
             switch (eye) {
                 case -1 : vp = Viewport(vX + vp.x - vp.x / 2, vY + vp.y, vp.width / 2, vp.height);   break;
                 case +1 : vp = Viewport(vX + vW / 2 + vp.x / 2, vY + vp.y, vp.width / 2, vp.height); break;
             }
         }
-    #endif
 
         Core::setViewport(vp.x, vp.y, vp.width, vp.height);
 
-        if (isUI)
-            UI::updateAspect(aspect);
-        else
-            camera->aspect = aspect;
+        return aspect;
     }
 
     void renderPrepare() {
-        if (inventory->video) {
-            inventory->render(1.0);
-
-            if (UI::subsStr != STR_EMPTY) {
-                UI::begin();
-                UI::updateAspect(float(Core::width) / float(Core::height));
-                atlasGlyphs->bind(sDiffuse);
-                UI::renderSubs();
-                UI::end();
+        #ifdef _OS_3DS
+            if (osGet3DSliderState() > 0.0f && !inventory->video) {
+                Core::settings.detail.stereo = Core::Settings::STEREO_SBS;
+                gfxSet3D(true);
+            } else {
+                Core::settings.detail.stereo = Core::Settings::STEREO_OFF;
+                gfxSet3D(false);
             }
-            return;
+        #endif
+
+        if (Core::settings.detail.stereo == Core::Settings::STEREO_ANAGLYPH) {
+            for (int i = 0; i < 2; i++) {
+                Texture *&tex = Core::eyeTex[i];
+                if (!tex || tex->origWidth != Core::width || tex->origHeight != Core::height) {
+                    delete tex;
+                    tex = new Texture(Core::width, Core::height, 1, FMT_RGBA, OPT_TARGET | OPT_NEAREST);
+                }
+            }
+        } else if (Core::settings.detail.stereo != Core::Settings::STEREO_VR) {
+            delete Core::eyeTex[0];
+            delete Core::eyeTex[1];
+            Core::eyeTex[0] = Core::eyeTex[1] = NULL;
         }
 
         needRenderGame = !inventory->video && !level.isTitle() && ((inventory->phaseRing < 1.0f && inventory->titleTimer <= 1.0f) || needRedrawTitleBG);
+        needRenderInventory = inventory->video || level.isTitle() || inventory->phaseRing > 0.0f || inventory->titleTimer > 0.0f;
 
-        if (!needRenderGame)
+        bool title  = inventory->isActive() || level.isTitle();
+        bool copyBg = title && (lastTitle != title || needRedrawTitleBG);
+        lastTitle = title;
+        needRedrawTitleBG = false;
+
+        if (!needRenderGame && !copyBg)
             return;
 
         if (needRedrawReflections) {
@@ -2891,106 +2981,62 @@ struct Level : IGame {
             needRedrawReflections = false;
         }
 
-        if (ambientCache)
+        if (ambientCache) {
             ambientCache->processQueue();
+        }
 
-        if (shadow && player)
-            renderShadows(player->getRoomIndex());
-    }
+        if (shadow[0] && players[0]) {
+            player = players[0];
+            renderShadows(player->getRoomIndex(), shadow[0]);
 
-    void renderGame(bool showUI) {
-        //if (Core::settings.detail.stereo || Core::settings.detail.splitscreen) {
-        //    Core::setTarget(NULL, CLEAR_ALL);
-        //    Core::validateRenderState();
-        //}
+            if (players[1]) {
+                if (!shadow[1]) {
+                    shadow[1] = new Texture(shadow[0]->origWidth, shadow[0]->origHeight, 1, shadow[0]->fmt, shadow[0]->opt);
+                }
 
-/*  // catsuit test
-        lara->bakeEnvironment();
-        lara->visibleMask = Lara::BODY_HEAD | Lara::BODY_ARM_L3 | Lara::BODY_ARM_R3;
-*/
-
-/*
-    // EQUIRECTANGULAR PROJECTION test
-        if (!cube360)
-            cube360 = new Texture(1024, 1024, 1, Texture::RGBA, true, NULL, true, false);
-        renderEnvironment(camera->getRoomIndex(), camera->pos, &cube360, 0, Core::passCompose);
-        Core::setTarget(NULL, Core::CLEAR_ALL);
-        setShader(Core::passFilter, Shader::FILTER_EQUIRECTANGULAR);
-        cube360->bind(sEnvironment);
-        mesh->renderQuad();
-        return;
-*/
-        Viewport vp = Core::viewportDef;
-
-        int viewsCount = players[1] ? 2 : 1;
-        for (int view = 0; view < viewsCount; view++) {
-            player = players[view];
-            camera = player->camera;
-
-            setClipParams(1.0f, NO_CLIP_PLANE);
-            params->waterHeight = params->clipHeight;
-
-            if (shadow) {
-                if (view > 0/* && Core::settings.detail.shadows < Core::Settings::HIGH*/)
-                    renderShadows(player->getRoomIndex()); // render shadows for player2 for all-in-one shadow technique
-                shadow->bind(sShadow);
-            }
-
-            Core::pass = Core::passCompose;
-
-            if (view == 0 && Input::hmd.ready) {
-                Core::settings.detail.stereo = Core::Settings::STEREO_VR;
-
-                GAPI::Texture *oldTarget = Core::defaultTarget;
-                Viewport vp = Core::viewportDef;
-
-                Core::defaultTarget = Core::eyeTex[0];
-                Core::viewportDef = Viewport(0, 0, Core::defaultTarget->width, Core::defaultTarget->height);
-                Core::setTarget(NULL,Core::defaultTarget, 0); // changing to 0 and adding defaultTarget parameter
-                Core::eye = -1.0f;
-                setup();
-                renderView(camera->getRoomIndex(), true);
-
-                Core::defaultTarget = Core::eyeTex[1];
-                Core::viewportDef = Viewport(0, 0, Core::defaultTarget->width, Core::defaultTarget->height);
-                Core::setTarget(NULL, Core::defaultTarget, 0);
-                Core::eye =  1.0f;
-                setup();
-                renderView(camera->getRoomIndex(), true);
-
-                //Core::settings.detail.vr = false;
-
-                Core::defaultTarget = oldTarget;
-                Core::setTarget(NULL, Core::defaultTarget, 0);
-                Core::viewportDef = vp;
-            }
-
-        #ifdef _OS_3DS
-            Core::settings.detail.stereo = osGet3DSliderState() > 0.0f ? Core::Settings::STEREO_ON : Core::Settings::STEREO_OFF;
-        #endif
-
-            if (Core::settings.detail.stereo == Core::Settings::STEREO_ON) { // left/right SBS stereo
-                float oldEye = Core::eye;
-
-                setViewport(view, -1, false);
-                setup();
-                renderView(camera->getRoomIndex(), true);
-
-                setViewport(view,  1, false);
-                setup();
-                renderView(camera->getRoomIndex(), true);
-
-                Core::eye = oldEye;
-            } else {
-                setViewport(view, int(Core::eye), false);
-                setup();
-                renderView(camera->getRoomIndex(), true);
+                player = players[1];
+                renderShadows(player->getRoomIndex(), shadow[1]);
             }
         }
 
-        if (showUI) {
-            Core::Pass pass = Core::pass;
+        if (copyBg) {
+            inventory->prepareBackground();
+        }
+    }
 
+    void setDefaultTarget(int eye, int view, bool invBG) {
+        int texIndex = eye <= 0 ? 0 : 1;
+
+        #ifdef _OS_3DS
+            Core::eye *= osGet3DSliderState() * 3.25f;
+
+            GAPI::curTarget = GAPI::defTarget[texIndex];
+
+            C3D_FrameDrawOn(GAPI::curTarget);
+        #else
+            if (invBG) {
+                if (Core::settings.detail.stereo == Core::Settings::STEREO_SPLIT) {
+                    Core::defaultTarget = inventory->getBackgroundTarget(view);
+                } else {
+                    Core::defaultTarget = inventory->getBackgroundTarget(texIndex);
+                }
+            } else {
+                if (Core::settings.detail.stereo == Core::Settings::STEREO_ANAGLYPH || Core::settings.detail.stereo == Core::Settings::STEREO_VR) {
+                    Core::defaultTarget = invBG ? inventory->getBackgroundTarget(texIndex) : Core::eyeTex[texIndex];
+                }
+            }
+        #endif
+    }
+
+    void renderEye(int eye, bool showUI, bool invBG) {
+        float          oldEye      = Core::eye;
+        Viewport       oldViewport = Core::viewportDef;
+        GAPI::Texture *oldTarget   = Core::defaultTarget;
+
+        Core::eye = float(eye);
+
+        if (needRenderGame || invBG) {
+            int viewsCount = players[1] ? 2 : 1;
             for (int view = 0; view < viewsCount; view++) {
                 player = players[view];
                 camera = player->camera;
@@ -2998,38 +3044,76 @@ struct Level : IGame {
                 setClipParams(1.0f, NO_CLIP_PLANE);
                 params->waterHeight = params->clipHeight;
 
-                if (Core::settings.detail.stereo == Core::Settings::STEREO_ON) { // left/right SBS stereo
-                    float oldEye = Core::eye;
+                Core::pass = Core::passCompose;
 
-                    setViewport(view, -1, false);
-                    renderUI();
+                setDefaultTarget(eye, view, invBG);
 
-                    setViewport(view, 1, false);
-                    renderUI();
-
-                    Core::eye = oldEye;
+                if (Core::settings.detail.stereo == Core::Settings::STEREO_SPLIT) {
+                    camera->aspect = setViewport(invBG ? -1 : view, invBG ? 0 : eye);               
                 } else {
-                    setViewport(view, int(Core::eye), false);
-                    renderUI();
+                    camera->aspect = setViewport(view, invBG ? 0 : eye);
                 }
-            }
 
-            Core::pass = pass;
+                setup();
+                renderView(camera->getRoomIndex(), true, showUI);
+            }
         }
 
-        Core::viewportDef = vp;
+        if (needRenderInventory && !invBG) {
+            if (players[1] && Core::settings.detail.stereo == Core::Settings::STEREO_SPLIT) {
+                renderInventoryEye(eye, 0);
+                renderInventoryEye(eye, 1);
+            } else {
+                renderInventoryEye(eye, -1);
+            }
+        }
+
+        Core::defaultTarget = oldTarget;
+        Core::viewportDef   = oldViewport;
+        Core::eye           = oldEye;
 
         player = players[0];
-        camera = player->camera;
+        if (player) {
+            camera = player->camera;
+        }
+    }
 
-        // lara->visibleMask = 0xFFFFFFFF; // catsuit test
+    void renderGame(bool showUI, bool invBG) {
+        if (Core::eye == 0.0f && Core::settings.detail.isStereo()) {
+            renderEye(-1, showUI, invBG);
+            renderEye(+1, showUI, invBG);
+        }  else {
+            renderEye(int(Core::eye), showUI, invBG);
+        }
+
+        if (Core::settings.detail.stereo == Core::Settings::STEREO_ANAGLYPH && !invBG) {
+            mat4 mProj, mView;
+            mView.identity();
+            mProj = GAPI::ortho(-1, +1, -1, +1, 0, 1);
+            mProj.scale(vec3(1.0f / 32767.0f));
+            Core::setViewProj(mView, mProj);
+\
+            Core::setDepthTest(false);
+            Core::setDepthWrite(false);
+
+            Core::setTarget(NULL, NULL, RT_STORE_COLOR);
+            setShader(Core::passFilter, Shader::FILTER_ANAGLYPH, false, false);
+            Core::eyeTex[0]->bind(sDiffuse);
+            Core::eyeTex[1]->bind(sNormal);
+            Core::setDepthTest(false);
+            mesh->renderQuad();
+
+            Core::setDepthTest(true);
+            Core::setDepthWrite(true);
+        }
     }
 
     void renderUI() {
         if (inventory->titleTimer > 1.0f || level.isTitle()) return;
 
-        UI::begin();
-        UI::updateAspect(camera->aspect);
+        Core::pushLights();
+
+        UI::begin(camera->aspect);
 
         atlasObjects->bind(sDiffuse);
         UI::renderPickups();
@@ -3050,13 +3134,11 @@ struct Level : IGame {
                 if (oxygen <= 0.2f) oxygen = 0.0f;
             }
 
-            float eye = inventory->active ? 0.0f : UI::width * Core::eye * 0.02f;
-
             vec2 pos;
             if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
-                pos = vec2((UI::width - size.x) * 0.5f - eye * 4.0f, 96);
+                pos = vec2((UI::width - size.x) * 0.5f, 96);
             else
-                pos = vec2(UI::width - 32 - size.x - eye, 32);
+                pos = vec2(UI::width - 32 - size.x, 32);
 
             if (!player->dozy && (player->stand == Lara::STAND_ONWATER || player->stand == Character::STAND_UNDERWATER)) {
                 UI::renderBar(CTEX_OXYGEN, pos, size, oxygen);
@@ -3080,84 +3162,62 @@ struct Level : IGame {
         UI::renderSubs();
 
         UI::end();
+
+        Core::popLights();
     }
 
-    void renderInventoryEye(int eye) {
-        float aspect = float(Core::width) / float(Core::height);
+    void renderInventoryEye(int eye, int view) {
+        setDefaultTarget(eye, view, false);
 
-        if (Core::settings.detail.stereo != Core::Settings::STEREO_VR)
-            switch (eye) {
-                case -1 : Core::setViewport(Core::x, Core::y, Core::width / 2, Core::height); break;
-                case  0 : Core::setViewport(Core::x, Core::y, Core::width, Core::height); break;
-                case +1 : Core::setViewport(Core::x + Core::width / 2, Core::y, Core::width / 2, Core::height); break;
+        Core::setTarget(NULL, NULL, RT_CLEAR_DEPTH | RT_STORE_COLOR);
+
+        float aspect = setViewport(view, eye);
+
+        Core::pushLights();
+        Core::resetLights();
+
+        if (inventory->video) {
+            inventory->render(1.0);
+
+            if (UI::subsStr != STR_EMPTY) {
+                UI::begin(float(Core::width) / float(Core::height));
+                atlasGlyphs->bind(sDiffuse);
+                UI::renderSubs();
+                UI::end();
             }
+        }
 
-        if (Core::settings.detail.stereo == Core::Settings::STEREO_SPLIT)
-            eye = 0;
-
-        Core::eye = float(eye);
-
-        if (level.isTitle() || inventory->titleTimer > 0.0f)
-            inventory->renderBackground();
+        if (!inventory->video) {
+            inventory->renderBackground(max(0, view));
+        }
 
         setupBinding();
         atlasObjects->bind(sDiffuse);
         inventory->render(aspect);
 
-        UI::begin();
-        UI::updateAspect(aspect);
+        UI::begin(aspect);
         atlasGlyphs->bind(sDiffuse);
-        inventory->renderUI();
+        if (!inventory->video) {
+            inventory->renderUI();
+        } else {
+            UI::renderSubs();
+        }
         UI::end();
-    }
 
-    void renderInventory() {
-        Core::setTarget(NULL, NULL, RT_CLEAR_DEPTH | RT_STORE_COLOR);
-
-        Core::resetLights();
-
-        if (!(level.isTitle() || inventory->titleTimer > 0.0f))
-            inventory->renderBackground();
-
-        float oldEye = Core::eye;
-
-        if ((Core::settings.detail.stereo == Core::Settings::STEREO_ON) || (Core::settings.detail.stereo == Core::Settings::STEREO_SPLIT && players[1])) {
-            renderInventoryEye(-1);
-            renderInventoryEye(+1);
-        } else
-            renderInventoryEye(int(Core::eye));
-
-        Core::setViewport(Core::x, Core::y, Core::width, Core::height);
-        Core::eye = oldEye;
+        Core::popLights();
     }
 
     void render() {
-        if (inventory->video)
-            return;
-
-        bool title  = inventory->isActive() || level.isTitle();
-        bool copyBg = title && (lastTitle != title || needRedrawTitleBG);
-        lastTitle = title;
-        needRedrawTitleBG = false;
-
-        if (isEnded) {
+        if (isEnded && !inventory->video) {
             Core::setTarget(NULL, NULL, RT_CLEAR_COLOR | RT_STORE_COLOR);
-            UI::begin();
-            UI::updateAspect(float(Core::width) / float(Core::height));
+            UI::begin(float(Core::width) / float(Core::height));
             atlasGlyphs->bind(sDiffuse);
             UI::textOut(vec2(0, 480 - 16), STR_LOADING, UI::aCenter, UI::width);
             UI::end();
             return;
         }
 
-        if (copyBg) {
-            inventory->prepareBackground();
-        }
-
-        if (needRenderGame)
-            renderGame(true);
-
-        renderInventory();
+        renderGame(true, false);
     }
 
 };

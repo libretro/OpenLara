@@ -1993,7 +1993,7 @@ namespace TR {
                 && type != ENEMY_MUMMY
                 && type != ENEMY_NATLA)
                 opaque = true;
-            if (type == SWITCH || type == SWITCH_WATER)
+            if (type == SWITCH || type == SWITCH_WATER || type == CUT_1)
                 opaque = true;
             if ((type >= PUZZLE_HOLE_1 && type <= PUZZLE_HOLE_4) || type == LIGHTNING)
                 opaque = false;
@@ -3713,6 +3713,7 @@ namespace TR {
         }
 
         void appendObjectTex(TextureInfo *&objTex, int32 &count) {
+            if (!objTex) return;
             TextureInfo *newObjectTextures = new TextureInfo[objectTexturesCount + count];
             memcpy(newObjectTextures,                       objectTextures,   sizeof(TextureInfo) * objectTexturesCount);
             memcpy(newObjectTextures + objectTexturesCount, objTex,           sizeof(TextureInfo) * count);
@@ -3792,7 +3793,7 @@ namespace TR {
             if (isCutsceneLevel()) {
                 for (int i = 0; i < entitiesBaseCount; i++) {
                     Entity &e = entities[i];
-                    if ((((version & VER_TR1)) && e.isActor()) || 
+                    if ((((version & VER_TR1)) && e.type == Entity::CUT_1) || 
                         (((version & (VER_TR2 | VER_TR3))) && e.isLara())) {
                         cutEntity = i;
                         break;
@@ -3991,28 +3992,28 @@ namespace TR {
         void initTextureTypes() {
             // rooms geometry
             for (int roomIndex = 0; roomIndex < roomsCount; roomIndex++) {
-                TR::Room       &room = rooms[roomIndex];
-                TR::Room::Data &data = room.data;
+                Room       &room = rooms[roomIndex];
+                Room::Data &data = room.data;
                 for (int i = 0; i < data.fCount; i++) {
                     Face &f = data.faces[i];
                     ASSERT(!f.colored);
                     ASSERT(f.flags.texture < objectTexturesCount);
-                    TR::TextureInfo &t = objectTextures[f.flags.texture];
+                    TextureInfo &t = objectTextures[f.flags.texture];
                     t.type = TEX_TYPE_ROOM;
                 }
             }
 
             // rooms static meshes
             for (int staticMeshIndex = 0; staticMeshIndex < staticMeshesCount; staticMeshIndex++) {
-                TR::StaticMesh *staticMesh = &staticMeshes[staticMeshIndex];
+                StaticMesh *staticMesh = &staticMeshes[staticMeshIndex];
                 if (!meshOffsets[staticMesh->mesh]) continue;
-                TR::Mesh &mesh = meshes[meshOffsets[staticMesh->mesh]];
+                Mesh &mesh = meshes[meshOffsets[staticMesh->mesh]];
 
                 for (int i = 0; i < mesh.fCount; i++) {
-                    TR::Face &f = mesh.faces[i];
+                    Face &f = mesh.faces[i];
                     ASSERT(f.colored || f.flags.texture < objectTexturesCount);
                     if (f.colored) continue;
-                    TR::TextureInfo &t = objectTextures[f.flags.texture];
+                    TextureInfo &t = objectTextures[f.flags.texture];
                     t.type = TEX_TYPE_ROOM;
                 }
             }
@@ -4026,6 +4027,48 @@ namespace TR {
                     t.type = TEX_TYPE_ROOM;
                 }
             }
+
+            // objects (duplicate all textures that are simultaneously used for static meshes)
+            TextureInfo *dupObjTex = NULL;
+            int         dupObjTexCount = 0;
+
+            for (int modelIndex = 0; modelIndex < modelsCount; modelIndex++) {
+                Model &model = models[modelIndex];
+                for (int meshIndex = model.mStart; meshIndex < model.mStart + model.mCount; meshIndex++) {
+                    Mesh &mesh = meshes[meshOffsets[meshIndex]];
+
+                    for (int i = 0; i < mesh.fCount; i++) {
+                        Face &f = mesh.faces[i];
+                        ASSERT(f.colored || f.flags.texture < objectTexturesCount);
+                        if (f.colored) continue;
+                        TextureInfo &t = objectTextures[f.flags.texture];
+                        if (t.type != TEX_TYPE_OBJECT) {
+                            if (!dupObjTex) {
+                                dupObjTex = new TextureInfo[128];
+                            }
+
+                            int index = 0;
+                            while (index < dupObjTexCount) {
+                                TextureInfo &ot = dupObjTex[index];
+                                if (ot.tile == t.tile && ot.clut == t.clut && ot.texCoord[0] == t.texCoord[0] && ot.texCoord[1] == t.texCoord[1])
+                                    break;
+                                index++;
+                            }
+
+                            if (index == dupObjTexCount) {
+                                ASSERT(index <= 128);
+                                dupObjTex[dupObjTexCount] = t;
+                                dupObjTex[dupObjTexCount].type = TEX_TYPE_OBJECT;
+                                dupObjTexCount++;
+                            }
+
+                            f.flags.texture = objectTexturesCount + index;
+                        }
+                    }
+                }
+            }
+
+            appendObjectTex(dupObjTex, dupObjTexCount);
         }
 
         static Entity::Type convToInv(Entity::Type type) {
@@ -4968,7 +5011,7 @@ namespace TR {
                             n = mesh.vertices[face.vertices[fn]].normal;\
                             continue;\
                         }\
-                        vec3 o(mesh.vertices[face.vertices[0]].coord);\
+                        vec3 o = mesh.vertices[face.vertices[0]].coord;\
                         vec3 a = o - mesh.vertices[face.vertices[1]].coord;\
                         vec3 b = o - mesh.vertices[face.vertices[2]].coord;\
                         o = b.cross(a).normal() * 16300.0f;\

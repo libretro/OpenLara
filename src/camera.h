@@ -13,10 +13,18 @@
 #define CAM_SPEED_FOLLOW  12
 #define CAM_SPEED_COMBAT  8
 
+#define CAM_FOCAL_LENGTH     1536.0f
+#define CAM_EYE_SEPARATION   16.0f
+
 #define CAM_FOLLOW_ANGLE     0.0f
 #define CAM_LOOK_ANGLE_XMAX  ( 55.0f * DEG2RAD)
 #define CAM_LOOK_ANGLE_XMIN  (-75.0f * DEG2RAD)
 #define CAM_LOOK_ANGLE_Y     ( 80.0f * DEG2RAD)
+
+#ifdef _OS_3DS
+    #define CAM_OFFSET_FOLLOW    (1024.0f + 512.0f + 256.0f)
+    #define CAM_FOCAL_LENGTH     512.0f
+#endif
 
 struct Camera : ICamera {
     IGame      *game;
@@ -33,6 +41,7 @@ struct Camera : ICamera {
     int         viewIndex;
     int         viewIndexLast;
     Controller* viewTarget;
+    Controller* viewTargetLast;
     Basis       fpHead;
     int         speed;
     bool        smooth;
@@ -94,9 +103,21 @@ struct Camera : ICamera {
         return level->rooms[getRoomIndex()].flags.water;
     }
 
-    vec3 getViewPoint() {
+    vec3 getViewPoint(bool useBounds = true) {
         Box box = owner->getBoundingBox();
         vec3 pos = owner->pos;
+
+        if (!useBounds) {
+            if (owner->getEntity().type == TR::Entity::LARA &&
+                owner->stand != Character::STAND_UNDERWATER &&
+                owner->stand != Character::STAND_ONWATER)
+            {
+                pos.y -= 512.0f;
+            }
+            return pos;
+        }
+
+
         vec3 center = box.center();
 
         if (centerView) {
@@ -104,39 +125,25 @@ struct Camera : ICamera {
             pos.z = center.z;
         }
 
-        if (mode == MODE_LOOK) {
-            Basis b = owner->getJoint(owner->jointHead);
-            b.translate(vec3(0, -128, 0));
-            pos = b.pos;
-        } else {
-            if (mode != MODE_STATIC)
-                pos.y = box.max.y + (box.min.y - box.max.y) * (3.0f / 4.0f);
-            else
-                pos.y = center.y;
+        if (owner->getEntity().type == TR::Entity::LARA) {
+            if (mode == MODE_LOOK) {
+                Basis b = owner->getJoint(owner->jointHead);
+                b.translate(vec3(0, -128, 0));
+                pos = b.pos;
+            } else {
+                if (mode != MODE_STATIC)
+                    pos.y = box.max.y + (box.min.y - box.max.y) * (3.0f / 4.0f);
+                else
+                    pos.y = center.y;
 
-            if (owner->stand != Character::STAND_UNDERWATER)
-                pos.y -= 256;
+                if (owner->stand != Character::STAND_UNDERWATER)
+                    pos.y -= 256;
+            }
+        } else {
+            pos.y = center.y;
         }
 
         return pos;
-    }
-
-    void setView(int viewIndex, float timer, int speed) {
-        viewIndexLast   = viewIndex;
-        smooth          = speed > 0;
-        mode            = MODE_STATIC;
-        this->viewIndex = viewIndex;
-        this->timer     = timer;
-        this->speed     = speed * 8;
-    }
-
-    void resetTarget() {
-        smooth        = speed > 0;
-        mode          = MODE_FOLLOW;
-        viewIndex     = -1;
-        viewTarget    = NULL;
-        timer         = -1.0f;
-        speed         = CAM_SPEED_FOLLOW;
     }
 
     virtual void doCutscene(const vec3 &pos, float rotation) {
@@ -331,6 +338,14 @@ struct Camera : ICamera {
             Input::setJoyVibration(cameraIndex,  clamp(shake, 0.0f, 1.0f), 0);
         }
 
+        if (mode == MODE_FOLLOW) {
+            speed = CAM_SPEED_FOLLOW;
+        }
+
+        if (mode == MODE_COMBAT) {
+            speed = CAM_SPEED_COMBAT;
+        }
+
         if (mode == MODE_CUTSCENE) {
             ASSERT(level->cameraFramesCount && level->cameraFrames);
 
@@ -434,19 +449,13 @@ struct Camera : ICamera {
                 targetAngle += angle;
             }
 
-            if (!firstPerson || viewIndex != -1) {
+            bool isStatic = (mode == MODE_STATIC || mode == MODE_HEAVY) && viewTarget;
 
-                if (timer > 0.0f) {
-                    timer -= Core::deltaTime;
-                    if (timer <= 0.0f) {
-                        resetTarget();
-                    }
-                }
-
+            if (!firstPerson || isStatic) {
                 TR::Location to;
 
                 target.box  = TR::NO_BOX;
-                if (viewIndex > -1) {
+                if (mode == MODE_STATIC && viewIndex > -1) {
                     TR::Camera &cam = level->cameras[viewIndex];
                     to.room = cam.room;
                     to.pos  = vec3(float(cam.x), float(cam.y), float(cam.z));
@@ -455,8 +464,7 @@ struct Camera : ICamera {
                         target.pos  = lookAt->getBoundingBox().center();
                     } else {
                         target.room = owner->getRoomIndex();
-                        target.pos  = owner->pos;
-                        target.pos.y -= 512.0f;
+                        target.pos  = getViewPoint(false);
                     }
                 } else {
                     vec3 p = getViewPoint();
@@ -483,9 +491,6 @@ struct Camera : ICamera {
 
                 move(to);
 
-                if (timer <= 0.0f)
-                    resetTarget();
-
                 mViewInv = mat4(eye.pos, target.pos, vec3(0, -1, 0));
             } else
                 updateFirstPerson();
@@ -499,6 +504,23 @@ struct Camera : ICamera {
             updateListener(mViewInv);
 
         smooth = true;
+
+        viewIndexLast = viewIndex;
+
+        if ((mode == MODE_STATIC || mode == MODE_HEAVY) && timer != 0.0f) {
+            timer -= Core::deltaTime;
+            if (timer <= 0.0f) {
+                timer = -1.0f;
+                smooth = false;
+            }
+        }
+
+        if (mode != MODE_HEAVY || timer == -1.0f) {
+            mode           = MODE_FOLLOW;
+            viewIndex      = -1;
+            viewTargetLast = viewTarget;
+            viewTarget     = NULL;
+        }
     }
 
     virtual void setup(bool calcMatrices) {
@@ -511,8 +533,12 @@ struct Camera : ICamera {
             if (shake > 0.0f)
                 Core::mViewInv.setPos(Core::mViewInv.getPos() + vec3(0.0f, sinf(shake * PI * 7) * shake * 48.0f, 0.0f));
 
-            if (Core::settings.detail.stereo == Core::Settings::STEREO_ON)
-                Core::mViewInv.setPos(Core::mViewInv.getPos() + Core::mViewInv.right().xyz() * (Core::eye * (firstPerson ? 8.0f : 32.0f) ));
+            if (Core::settings.detail.stereo == Core::Settings::STEREO_SBS || Core::settings.detail.stereo == Core::Settings::STEREO_ANAGLYPH)
+                #ifdef _OS_3DS
+                    Core::mViewInv.setPos(Core::mViewInv.getPos() + Core::mViewInv.right().xyz() * (Core::eye * CAM_EYE_SEPARATION / (firstPerson ? 8.0f : 1.0f) ) );
+                #else
+					Core::mViewInv.setPos(Core::mViewInv.getPos() + Core::mViewInv.right().xyz() * (Core::eye * CAM_EYE_SEPARATION) );
+                #endif
 
             if (reflectPlane) {
                 Core::mViewInv = mat4(*reflectPlane) * Core::mViewInv;
@@ -521,17 +547,19 @@ struct Camera : ICamera {
 
             Core::mView = Core::mViewInv.inverseOrtho();
 
-            if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
+            if (Core::settings.detail.stereo == Core::Settings::STEREO_VR) {
                 Core::mProj = Input::hmd.proj[Core::eye == -1.0f ? 0 : 1];
-            else
-                Core::mProj = GAPI::perspective(fov, aspect, znear, zfar);
+            } else {
+                float eyeSep = (Core::eye * CAM_EYE_SEPARATION) * znear / CAM_FOCAL_LENGTH;
+                Core::mProj = GAPI::perspective(fov, aspect, znear, zfar, eyeSep);
+            }
         }
 
         Core::setViewProj(Core::mView, Core::mProj);
         Core::viewPos = Core::mViewInv.getPos();
 
         // update room for eye (with HMD offset)
-        if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
+        if (Core::settings.detail.isStereo())
             level->getSector(eye.room, Core::viewPos.xyz());
 
         frustum->pos = Core::viewPos.xyz();
@@ -547,6 +575,10 @@ struct Camera : ICamera {
         fov   = firstPerson ? 90.0f : 65.0f;
         znear = firstPerson ? 16.0f : 32.0f;
         zfar  = 45.0f * 1024.0f;
+
+        #ifdef _OS_3DS
+            fov   = firstPerson ? 65.0f : 55.0f;
+        #endif
 
         #ifdef _OS_PSP
             znear = 256.0f;
