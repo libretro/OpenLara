@@ -4,8 +4,21 @@
 #include "core.h"
 #include "format.h"
 
-TR::TextureInfo barTile[5 /* UI::BAR_MAX */];
-TR::TextureInfo &whiteTile = barTile[4]; // BAR_WHITE
+enum CommonTexType {
+    CTEX_FLASH,
+    CTEX_HEALTH,
+    CTEX_OXYGEN,
+    CTEX_OPTION,
+    CTEX_WHITE_ROOM,
+    CTEX_WHITE_OBJECT,
+    CTEX_WHITE_SPRITE,
+    CTEX_MAX,
+};
+
+TR::TextureInfo CommonTex[CTEX_MAX];
+TR::TextureInfo &whiteRoom   = CommonTex[CTEX_WHITE_ROOM];
+TR::TextureInfo &whiteObject = CommonTex[CTEX_WHITE_OBJECT];
+TR::TextureInfo &whiteSprite = CommonTex[CTEX_WHITE_SPRITE];
 
 #define PLANE_DETAIL 48
 #define CIRCLE_SEGS  16
@@ -343,7 +356,7 @@ struct MeshBuilder {
                     int y = m.y;
                     int z = m.z - room.info.z;
                     int d = m.rotation.value / 0x4000;
-                    buildMesh(geom, blendMask, mesh, level, indices, vertices, iCount, vCount, vStartRoom, 0, x, y, z, d, m.color);
+                    buildMesh(geom, blendMask, mesh, level, indices, vertices, iCount, vCount, vStartRoom, 0, x, y, z, d, m.color, true, false);
                 }
 
                 geom.finish(iCount);
@@ -395,7 +408,7 @@ struct MeshBuilder {
                         #ifndef MERGE_MODELS
                             geom.getNextRange(vStartModel, iCount, 0xFFFF, 0xFFFF);
                         #endif
-                        buildMesh(geom, blendMask, mesh, level, indices, vertices, iCount, vCount, vStartModel, j, 0, 0, 0, 0, COLOR_WHITE, forceOpaque);
+                        buildMesh(geom, blendMask, mesh, level, indices, vertices, iCount, vCount, vStartModel, j, 0, 0, 0, 0, COLOR_WHITE, false, forceOpaque);
                     }
 
                     #ifndef MERGE_MODELS
@@ -441,7 +454,7 @@ struct MeshBuilder {
         for (int i = 0; i < 9; i++) {
             Vertex &v0 = vertices[vCount + i * 2 + 0];
             v0.normal    = short4( 0, -1, 0, 32767 );
-            v0.texCoord  = short4( whiteTile.texCoordAtlas[0].x, whiteTile.texCoordAtlas[0].y, 32767, 32767 );
+            v0.texCoord  = short4( whiteObject.texCoordAtlas[0].x, whiteObject.texCoordAtlas[0].y, 32767, 32767 );
             v0.color     = v0.light = ubyte4( 0, 0, 0, 0 );
 
             if (i == 8) {
@@ -485,7 +498,7 @@ struct MeshBuilder {
         quad.iStart = iCount;
         quad.iCount = 2 * 3;
 
-        addQuad(indices, iCount, vCount, vStartCommon, vertices, &whiteTile, false, false);
+        addQuad(indices, iCount, vCount, vStartCommon, vertices, &whiteSprite, false, false);
         vertices[vCount + 0].coord = short4( -32767,  32767, 0, 1 );
         vertices[vCount + 1].coord = short4(  32767,  32767, 1, 1 );
         vertices[vCount + 2].coord = short4(  32767, -32767, 1, 0 );
@@ -517,7 +530,7 @@ struct MeshBuilder {
             pos.rotate(cs);
             v.coord     = short4( short(pos.x), short(pos.y), 0, 0 );
             v.normal    = short4( 0, 0, 0, 32767 );
-            v.texCoord  = short4( whiteTile.texCoordAtlas[0].x, whiteTile.texCoordAtlas[0].y, 32767, 32767 );
+            v.texCoord  = short4( whiteSprite.texCoordAtlas[0].x, whiteSprite.texCoordAtlas[0].y, 32767, 32767 );
             v.color     = ubyte4( 255, 255, 255, 255 );
             v.light     = ubyte4( 255, 255, 255, 255 );
 
@@ -969,13 +982,13 @@ struct MeshBuilder {
         }
     }
 
-    bool buildMesh(Geometry &geom, int blendMask, const TR::Mesh &mesh, TR::Level *level, Index *indices, Vertex *vertices, int &iCount, int &vCount, int vStart, int16 joint, int x, int y, int z, int dir, const Color32 &light, bool forceOpaque = false) {
+    bool buildMesh(Geometry &geom, int blendMask, const TR::Mesh &mesh, TR::Level *level, Index *indices, Vertex *vertices, int &iCount, int &vCount, int vStart, int16 joint, int x, int y, int z, int dir, const Color32 &light, bool useRoomTex, bool forceOpaque) {
         bool isOpaque = true;
 
         for (int j = 0; j < mesh.fCount; j++) {
             TR::Face &f = mesh.faces[j];
             ASSERT(f.colored || f.flags.texture < level->objectTexturesCount);
-            TR::TextureInfo &t = f.colored ? whiteTile : level->objectTextures[f.flags.texture];
+            TR::TextureInfo &t = f.colored ? (useRoomTex ? whiteRoom : whiteObject) : level->objectTextures[f.flags.texture];
 
             int texAttrib = forceOpaque ? 0 : t.attribute;
 
@@ -1263,7 +1276,7 @@ struct MeshBuilder {
         int &iCount      = dynICount;
         int &vCount      = dynVCount;
 
-        short4 uv = short4( whiteTile.texCoordAtlas[0].x, whiteTile.texCoordAtlas[0].y, 32767, 32767 );
+        short4 uv = short4( whiteSprite.texCoordAtlas[0].x, whiteSprite.texCoordAtlas[0].y, 32767, 32767 );
 
         int16 minX = int16(pos.x);
         int16 minY = int16(pos.y);

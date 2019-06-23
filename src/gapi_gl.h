@@ -60,10 +60,11 @@ extern struct retro_hw_render_callback hw_render;
     extern EGLDisplay display;
 #elif defined(__SDL2__) 
     #include <SDL2/SDL.h>
-    #if !defined(_GAPI_GLES)
-        #include <SDL2/SDL_opengl.h>
-    #else
+
+    #if defined(_GAPI_GLES)
+        #define GL_GLEXT_PROTOTYPES 1
         #include <SDL2/SDL_opengles2.h>
+        #include <SDL2/SDL_opengles2_gl2ext.h>
 
         #define GL_CLAMP_TO_BORDER          0x812D
         #define GL_TEXTURE_BORDER_COLOR     0x1004
@@ -86,20 +87,26 @@ extern struct retro_hw_render_callback hw_render;
         #define GL_RG16F        GL_RGBA
         #define GL_HALF_FLOAT   GL_HALF_FLOAT_OES
 
-        #define GL_TEXTURE_3D           0
         #define GL_TEXTURE_WRAP_R       0
         #define GL_DEPTH_STENCIL        GL_DEPTH_STENCIL_OES
         #define GL_UNSIGNED_INT_24_8    GL_UNSIGNED_INT_24_8_OES
 
         #define glTexImage3D(...) 0
+        #ifndef GL_TEXTURE_3D // WUUUUUT!?
+            #define GL_TEXTURE_3D GL_TEXTURE_3D_OES
+        #endif
 
         #define glGenVertexArrays(...)
         #define glDeleteVertexArrays(...)
         #define glBindVertexArray(...)
-        
+
         #define GL_PROGRAM_BINARY_LENGTH     GL_PROGRAM_BINARY_LENGTH_OES
         #define glGetProgramBinary(...)
         #define glProgramBinary(...)
+    #else
+        #define GL_GLEXT_PROTOTYPES 1
+        #include <SDL2/SDL_opengl.h>
+        #include <SDL2/SDL_opengl_glext.h>
     #endif
 
 #elif defined(_OS_RPI) || defined(_OS_CLOVER)
@@ -145,7 +152,7 @@ extern struct retro_hw_render_callback hw_render;
     #define glProgramBinary(...)
     
     extern EGLDisplay display;
-#elif _OS_NX
+#elif _OS_SWITCH
     #define GL_GLEXT_PROTOTYPES
     #include <EGL/egl.h>
     #include <EGL/eglext.h>
@@ -251,6 +258,8 @@ extern struct retro_hw_render_callback hw_render;
 
     #define GetProcOGL(x) x=(decltype(x))GetProc(#x);
 
+    // TODO: different systems, different headers, different extension suffixes... fuck this shit and make your own OGL header!
+
 // Texture
     #ifdef _OS_WIN
         PFNGLACTIVETEXTUREPROC              glActiveTexture;
@@ -331,7 +340,7 @@ extern struct retro_hw_render_callback hw_render;
     PFNGLPROGRAMBINARYPROC              glProgramBinary;
 #endif
 
-#if defined(_GAPI_GLES) && !defined(_OS_RPI) && !defined(_OS_CLOVER) && !defined(_OS_IOS) && !defined(_OS_ANDROID) && !defined(__SDL2__)
+#if defined(_GAPI_GLES) && !defined(_OS_RPI) && !defined(_OS_CLOVER) && !defined(_OS_PSC) && !defined(_OS_IOS) && !defined(_OS_ANDROID) && !defined(__SDL2__)
     PFNGLDISCARDFRAMEBUFFEREXTPROC      glDiscardFramebufferEXT;
 #endif
 
@@ -478,7 +487,6 @@ namespace GAPI {
         void bind() {}
         void setParam(UniformType uType, const vec4  &value, int count = 1) {}
         void setParam(UniformType uType, const mat4  &value, int count = 1) {}
-        void setParam(UniformType uType, const Basis &value, int count = 1) {}
     #else
         GLuint  ID;
         int32   uID[uMAX];
@@ -542,7 +550,7 @@ namespace GAPI {
                 sprintf(defines + strlen(defines), "#define %s\n", DefineName[def[i]]);
             }
 
-            #if defined(_OS_RPI) || defined(_OS_CLOVER)
+            #if defined(_OS_RPI) || defined(_OS_CLOVER) || (defined (__SDL2__) && defined (_GAPI_GLES))
                 strcat(defines, "#define OPT_VLIGHTPROJ\n");
                 strcat(defines, "#define OPT_VLIGHTVEC\n");
                 strcat(defines, "#define OPT_SHADOW_ONETAP\n");
@@ -677,7 +685,7 @@ namespace GAPI {
             }
         }
 
-        void setup() {
+        void validate() {
             if (rebind) {
                 glUseProgram(ID);
                 rebind = false;
@@ -689,50 +697,45 @@ namespace GAPI {
                 const Binding &b = bindings[uType];
 
                 if (b.vec)
-                    glUniform4fv(uID[uType], cbCount[uType] / 4, (GLfloat*)(cbMem + b.reg));
+                    glUniform4fv(uID[uType], cbCount[uType], (GLfloat*)(cbMem + b.reg));
                 else
-                    glUniformMatrix4fv(uID[uType], cbCount[uType] / 16, false, (GLfloat*)(cbMem + b.reg));
+                    glUniformMatrix4fv(uID[uType], cbCount[uType] / 4, false, (GLfloat*)(cbMem + b.reg));
 
+                cbCount[uType] = 0;
                 Core::stats.cb++;
             }
-
-            memset(cbCount, 0, sizeof(cbCount));
         }
         
         void setParam(UniformType uType, float *value, int count) {
             cbCount[uType] = count;
-            memcpy(cbMem + bindings[uType].reg, value, count * 4);
+            memcpy(cbMem + bindings[uType].reg, value, count * 16);
         }
 
         void setParam(UniformType uType, const vec4 &value, int count = 1) {
-            if (uID[uType] != -1) setParam(uType, (float*)&value, count * 4);
+            if (uID[uType] != -1) setParam(uType, (float*)&value, count);
         }
 
         void setParam(UniformType uType, const mat4 &value, int count = 1) {
-            if (uID[uType] != -1) setParam(uType, (float*)&value, count * 16);
-        }
-
-        void setParam(UniformType uType, const Basis &value, int count = 1) {
-            if (uID[uType] != -1) setParam(uType, (float*)&value, count * 8);
+            if (uID[uType] != -1) setParam(uType, (float*)&value, count * 4);
         }
     #endif
     };
 
 
 // Texture
-	static const struct FormatDesc {
-		GLuint ifmt, fmt;
-		GLenum type;
-	} formats[FMT_MAX] = {
-		{ GL_LUMINANCE,       GL_LUMINANCE,       GL_UNSIGNED_BYTE          }, // LUMINANCE
-		{ GL_RGBA,            GL_RGBA,            GL_UNSIGNED_BYTE          }, // RGBA
-		{ GL_RGB,             GL_RGB,             GL_UNSIGNED_SHORT_5_6_5   }, // RGB16
-		{ GL_RGBA,            GL_RGBA,            GL_UNSIGNED_SHORT_5_5_5_1 }, // RGBA16
-		{ GL_RG32F,           GL_RG,              GL_FLOAT                  }, // RG_FLOAT
-		{ GL_RG16F,           GL_RG,              GL_HALF_FLOAT             }, // RG_HALF
-		{ GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT         }, // DEPTH
-		{ GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT         }, // SHADOW
-	};
+   static const struct FormatDesc {
+      GLuint ifmt, fmt;
+      GLenum type;
+   } formats[FMT_MAX] = {
+      { GL_LUMINANCE,       GL_LUMINANCE,       GL_UNSIGNED_BYTE          }, // LUMINANCE
+      { GL_RGBA,            GL_RGBA,            GL_UNSIGNED_BYTE          }, // RGBA
+      { GL_RGB,             GL_RGB,             GL_UNSIGNED_SHORT_5_6_5   }, // RGB16
+      { GL_RGBA,            GL_RGBA,            GL_UNSIGNED_SHORT_5_5_5_1 }, // RGBA16
+      { GL_RG32F,           GL_RG,              GL_FLOAT                  }, // RG_FLOAT
+      { GL_RG16F,           GL_RG,              GL_HALF_FLOAT             }, // RG_HALF
+      { GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT         }, // DEPTH
+      { GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT         }, // SHADOW
+   };
 
     struct Texture {
         uint32     ID;
@@ -845,7 +848,9 @@ namespace GAPI {
             glGenerateMipmap(target);
             if ((opt & (OPT_VOLUME | OPT_CUBEMAP | OPT_NEAREST)) == 0 && (Core::support.maxAniso > 0)) {
                 glTexParameteri(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, min(int(Core::support.maxAniso), 8));
-                //glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 4);
+            #if !defined(_OS_RPI) && !defined(_OS_CLOVER) // TODO
+                glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 3);
+            #endif
             }
         }
 
@@ -1162,25 +1167,35 @@ namespace GAPI {
             #ifdef _GAPI_GLES
                 int GLES_VERSION = 1;
                 #if defined(__SDL2__)
-                SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &GLES_VERSION);
+                    SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &GLES_VERSION);
                 #else
-                glGetIntegerv(GL_MAJOR_VERSION, &GLES_VERSION);
+                    #if defined(_OS_RPI) || defined(_OS_CLOVER)
+                        GLES_VERSION = 2;
+                    #else
+                        glGetIntegerv(GL_MAJOR_VERSION, &GLES_VERSION);
+                    #endif
                 #endif 
                 GLES3 = GLES_VERSION > 2; 
             #endif
         #endif
 
+        bool _GL_EXT_shadow_samplers      = extSupport(ext, "GL_EXT_shadow_samplers");
+        bool _GL_ARB_shadow               = extSupport(ext, "GL_ARB_shadow");
+        bool _GL_OES_standard_derivatives = extSupport(ext, "GL_OES_standard_derivatives");
+
         support.shaderBinary   = extSupport(ext, "_program_binary");
         support.VAO            = GLES3 || extSupport(ext, "_vertex_array_object");
         support.depthTexture   = GLES3 || extSupport(ext, "_depth_texture");
-        support.shadowSampler  = extSupport(ext, "_shadow_samplers") || extSupport(ext, "GL_ARB_shadow");
+        support.shadowSampler  = _GL_EXT_shadow_samplers || _GL_ARB_shadow;
         support.discardFrame   = extSupport(ext, "_discard_framebuffer");
         support.texNPOT        = GLES3 || extSupport(ext, "_texture_npot") || extSupport(ext, "_texture_non_power_of_two");
         support.texRG          = GLES3 || extSupport(ext, "_texture_rg ");   // hope that isn't last extension in string ;)
         #if (defined(_GAPI_GLES) || defined(__LIBRETRO_GLES__))
-            support.tex3D      = GLES3;
+            support.derivatives = GLES3 || _GL_OES_standard_derivatives;
+            support.tex3D       = GLES3;
         #else
-            support.tex3D      = glTexImage3D != NULL;
+            support.derivatives = true; 
+            support.tex3D       = glTexImage3D != NULL;
         #endif
         support.texBorder      = extSupport(ext, "_texture_border_clamp");
         support.maxAniso       = extSupport(ext, "_texture_filter_anisotropic");
@@ -1189,9 +1204,15 @@ namespace GAPI {
         support.texFloatLinear = support.colorFloat || extSupport(ext, "GL_ARB_texture_float") || extSupport(ext, "_texture_float_linear");
         support.texFloat       = support.texFloatLinear || extSupport(ext, "_texture_float");
         support.texHalfLinear  = support.colorHalf || extSupport(ext, "GL_ARB_texture_float") || extSupport(ext, "_texture_half_float_linear") || extSupport(ext, "_color_buffer_half_float");
+ 
         support.texHalf        = support.texHalfLinear || extSupport(ext, "_texture_half_float");
         support.clipDist       = false; // TODO
 
+        #ifdef SDL2_GLES
+            support.shaderBinary  = false; // TODO
+            support.VAO           = false; // TODO
+            support.shadowSampler = false; // TODO
+        #endif
 
         #ifdef PROFILE
             support.profMarker = extSupport(ext, "_KHR_debug");
@@ -1230,52 +1251,67 @@ namespace GAPI {
         glClearColor(0, 0, 0, 0);
     #endif
 
-        GLSL_HEADER_VERT[0] = GLSL_HEADER_FRAG[0] = 0;
-    #ifdef _GAPI_GLES
-        if (!GLES3) {
-            strcat(GLSL_HEADER_VERT, "#define VERTEX\n"
-                                     "precision lowp  int;\n"
-                                     "precision highp float;\n");
+        char extHeader[256];
+        GLSL_HEADER_VERT[0] = GLSL_HEADER_FRAG[0] = extHeader[0] = 0;
+        if (_GL_OES_standard_derivatives) {
+            strcat(extHeader, "#extension GL_OES_standard_derivatives : enable\n");
+        }
 
-            strcat(GLSL_HEADER_FRAG, "#extension GL_OES_standard_derivatives : enable\n");
-            if (support.shadowSampler) {
-                strcat(GLSL_HEADER_FRAG, "#extension GL_EXT_shadow_samplers : enable\n");
-            }
-            strcat(GLSL_HEADER_FRAG, "#define FRAGMENT\n"
-                                     "precision lowp  int;\n"
-                                     "precision highp float;\n"
-                                     "#define fragColor gl_FragColor\n");
-        } else {
+        if (_GL_EXT_shadow_samplers && !_GL_ARB_shadow) {
+            strcat(extHeader, "#extension GL_EXT_shadow_samplers : enable\n");
+            strcat(extHeader, "#define USE_GL_EXT_shadow_samplers\n");
+        }
+        
+    #ifdef _GAPI_GLES
+        if (GLES3) {
+            // vertex
             strcat(GLSL_HEADER_VERT, "#version 300 es\n"
-                                     "#define VERTEX\n"
                                      "precision lowp  int;\n"
                                      "precision highp float;\n"
+                                     "#define VERTEX\n"
                                      "#define varying   out\n"
                                      "#define attribute in\n"
                                      "#define texture2D texture\n");
-
+            // fragment
             strcat(GLSL_HEADER_FRAG, "#version 300 es\n");
-            if (support.shadowSampler) {
-                strcat(GLSL_HEADER_FRAG, "#extension GL_EXT_shadow_samplers : enable\n");
-            }
-            strcat(GLSL_HEADER_FRAG, "#define FRAGMENT\n"
-                                     "precision lowp  int;\n"
+            strcat(GLSL_HEADER_FRAG, extHeader);
+            strcat(GLSL_HEADER_FRAG, "precision lowp  int;\n"
                                      "precision highp float;\n"
                                      "precision lowp  sampler3D;\n"
+                                     "#define FRAGMENT\n"
                                      "#define varying     in\n"
                                      "#define texture2D   texture\n"
                                      "#define texture3D   texture\n"
                                      "#define textureCube texture\n"
                                      "out vec4 fragColor;\n");
+        } else {
+            // vertex
+            strcat(GLSL_HEADER_VERT, "#version 100\n"
+                                     "precision lowp  int;\n"
+                                     "precision highp float;\n"
+                                     "#define VERTEX\n");
+            // fragment
+            strcat(GLSL_HEADER_FRAG, "#version 100\n");
+            strcat(GLSL_HEADER_FRAG, extHeader);
+            strcat(GLSL_HEADER_FRAG, "precision lowp  int;\n"
+                                     "precision highp float;\n"
+                                     "#define FRAGMENT\n"
+                                     "#define fragColor gl_FragColor\n");
+        }
+
+        if (support.shadowSampler) {
+            strcat(GLSL_HEADER_FRAG, "#define sampler2DShadow lowp sampler2DShadow\n");
         }
     #else
+        // vertex
         strcat(GLSL_HEADER_VERT, "#version 110\n"
                                  "#define VERTEX\n");
-        strcat(GLSL_HEADER_FRAG, "#version 110\n"
-                                 "#define FRAGMENT\n"
+        // fragment
+        strcat(GLSL_HEADER_FRAG, "#version 110\n");
+        strcat(GLSL_HEADER_FRAG, extHeader);
+        strcat(GLSL_HEADER_FRAG, "#define FRAGMENT\n"
                                  "#define fragColor gl_FragColor\n");
     #endif
-
         ASSERT(strlen(GLSL_HEADER_VERT) < COUNT(GLSL_HEADER_VERT));
         ASSERT(strlen(GLSL_HEADER_FRAG) < COUNT(GLSL_HEADER_FRAG));
     }
@@ -1369,7 +1405,7 @@ namespace GAPI {
                 #ifdef _OS_ANDROID
                     glInvalidateFramebuffer(GL_FRAMEBUFFER, count, discard);
                 #else
-                    #if !defined(__SDL2__)
+                    #if !defined(__SDL2__) && !defined(_OS_PSC)
                         glDiscardFramebufferEXT(GL_FRAMEBUFFER, count, discard);
                     #endif
                 #endif
@@ -1391,7 +1427,7 @@ namespace GAPI {
             if (wglSwapIntervalEXT) wglSwapIntervalEXT(enable ? 1 : 0);
         #elif _OS_LINUX
             if (glXSwapIntervalSGI) glXSwapIntervalSGI(enable ? 1 : 0);
-        #elif defined(_OS_RPI) || defined(_OS_CLOVER) || defined(_OS_NX)
+        #elif defined(_OS_RPI) || defined(_OS_CLOVER) || defined(_OS_SWITCH)
             eglSwapInterval(display, enable ? 1 : 0);
         #endif
     }
@@ -1520,7 +1556,7 @@ namespace GAPI {
         glLoadMatrixf((GLfloat*)&m);
     #endif
         if (Core::active.shader) {
-            Core::active.shader->setup();
+            Core::active.shader->validate();
         }
 
         glDrawElements(GL_TRIANGLES, range.iCount, GL_UNSIGNED_SHORT, mesh->iBuffer + range.iStart);
