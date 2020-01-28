@@ -13,8 +13,8 @@ extern struct retro_hw_render_callback hw_render;
 #endif
 
 #ifdef _OS_WIN
-    #include <gl/GL.h>
-    #include <gl/glext.h>
+    #include <GL/gl.h>
+    #include <GL/glext.h>
 #elif _OS_ANDROID
     #include <dlfcn.h>
 

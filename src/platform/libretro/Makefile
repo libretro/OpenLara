@@ -35,7 +35,6 @@ endif
 TARGET_NAME = openlara
 
 CORE_DIR := .
-CXXFLAGS :=
 
 ifeq ($(platform), unix)
    TARGET := $(TARGET_NAME)_libretro.so
@@ -138,7 +137,7 @@ endif
 else ifeq ($(platform), emscripten)
 	TARGET := $(TARGET_NAME)_libretro_emscripten.bc
 else
-   CC = gcc
+   CC ?= gcc
    TARGET := $(TARGET_NAME)_libretro.dll
    SHARED := -shared -static-libgcc -static-libstdc++ -Wl,--version-script=link.T -lwinmm -Wl,--no-undefined
    GL_LIB := -lopengl32
@@ -207,7 +206,7 @@ CFLAGS += -D__LIBRETRO__
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CXX) $(fpic) $(SHARED) $(INCLUDES) -o $@ $(OBJECTS) $(LIBS) -lm $(EXTRA_GL_LIBS)
+	$(CXX) $(LDFLAGS) $(fpic) $(SHARED) $(INCLUDES) -o $@ $(OBJECTS) $(LIBS) -lm $(EXTRA_GL_LIBS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(fpic) -c -o $@ $<
