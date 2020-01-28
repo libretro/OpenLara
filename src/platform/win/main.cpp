@@ -14,14 +14,6 @@
     #endif
 #endif
 
-//#define VR_SUPPORT
-// TODO: fix depth precision
-// TODO: fix water surface rendering
-// TODO: fix clipping
-// TODO: add MSAA support for render targets
-// TODO: add IK for arms
-// TODO: controls (WIP)
-
 // hint to the driver to use discrete GPU
 extern "C" {
 // NVIDIA
@@ -29,10 +21,6 @@ extern "C" {
 // AMD
     __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
-
-#ifdef VR_SUPPORT
-   #include "libs/openvr/openvr.h"
-#endif
 
 #include "game.h"
 
@@ -127,7 +115,6 @@ DWORD (WINAPI *XInputSetState) (DWORD dwUserIndex, XINPUT_VIBRATION* pVibration)
 void  (WINAPI *XInputEnable)   (BOOL enable) = NULL;
 #define XInputGetProc(x) (x = (decltype(x))GetProcAddress(h, #x))
 
-#define JOY_DEAD_ZONE_STICK      0.3f
 #define JOY_DEAD_ZONE_TRIGGER    0.01f
 #define JOY_MIN_UPDATE_FX_TIME   50
 
@@ -200,13 +187,8 @@ float joyAxis(int x, int xMin, int xMax) {
 vec2 joyDir(float ax, float ay) {
     vec2 dir = vec2(ax, ay);
     float dist = min(1.0f, dir.length());
-    if (dist < JOY_DEAD_ZONE_STICK) dist = 0.0f;
 
     return dir.normal() * dist;
-}
-
-int joyDeadZone(int value, int zone) {
-    return (value < -zone || value > zone) ? value : 0;
 }
 
 void joyUpdate() {
@@ -220,12 +202,12 @@ void joyUpdate() {
             if (XInputGetState(j, &state) == ERROR_SUCCESS) {
                 //osJoyVibrate(j, state.Gamepad.bLeftTrigger / 255.0f, state.Gamepad.bRightTrigger / 255.0f); // vibration test
 
-                Input::setJoyPos(j, jkL,   joyDir(joyAxis(joyDeadZone( state.Gamepad.sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE),  -32768, 32767),
-                                                  joyAxis(joyDeadZone(-state.Gamepad.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE),  -32768, 32767)));
-                Input::setJoyPos(j, jkR,   joyDir(joyAxis(joyDeadZone( state.Gamepad.sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE), -32768, 32767),
-                                                  joyAxis(joyDeadZone(-state.Gamepad.sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE), -32768, 32767)));
-                Input::setJoyPos(j, jkLT,  vec2(joyDeadZone(state.Gamepad.bLeftTrigger,  XINPUT_GAMEPAD_TRIGGER_THRESHOLD) / 255.0f, 0.0f));
-                Input::setJoyPos(j, jkRT,  vec2(joyDeadZone(state.Gamepad.bRightTrigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD) / 255.0f, 0.0f));
+                Input::setJoyPos(j, jkL,   joyDir(joyAxis( state.Gamepad.sThumbLX,  -32768, 32767),
+                                                  joyAxis(-state.Gamepad.sThumbLY,  -32768, 32767)));
+                Input::setJoyPos(j, jkR,   joyDir(joyAxis( state.Gamepad.sThumbRX, -32768, 32767),
+                                                  joyAxis(-state.Gamepad.sThumbRY, -32768, 32767)));
+                Input::setJoyPos(j, jkLT,  vec2(state.Gamepad.bLeftTrigger / 255.0f, 0.0f));
+                Input::setJoyPos(j, jkRT,  vec2(state.Gamepad.bRightTrigger/ 255.0f, 0.0f));
 
                 static const JoyKey keys[] = { jkUp, jkDown, jkLeft, jkRight, jkStart, jkSelect, jkL, jkR, jkLB, jkRB, jkNone, jkNone, jkA, jkB, jkX, jkY };
                 for (int i = 0; i < 16; i++)
@@ -391,7 +373,31 @@ void sndInit(HWND hwnd) {
 
 HWND hWnd;
 
-#ifdef _GAPI_GL
+
+#ifdef _GAPI_SW
+    HDC    hDC;
+
+    void ContextCreate() {
+        hDC = GetDC(hWnd);
+    }
+
+    void ContextDelete() {
+        ReleaseDC(hWnd, hDC);
+        delete[] GAPI::swColor;
+    }
+
+    void ContextResize() {
+        delete[] GAPI::swColor;
+        GAPI::swColor = new GAPI::ColorSW[Core::width * Core::height];
+
+        GAPI::resize();
+    }
+
+    void ContextSwap() {
+        const BITMAPINFO bmi = { sizeof(BITMAPINFOHEADER), Core::width, -Core::height, 1, sizeof(GAPI::ColorSW) * 8, BI_RGB, 0, 0, 0, 0, 0 };
+        SetDIBitsToDevice(hDC, 0, 0, Core::width, Core::height, 0, 0, 0, Core::height, GAPI::swColor, &bmi, 0);
+    }
+#elif _GAPI_GL
     HDC   hDC;
     HGLRC hRC;
 
@@ -564,6 +570,7 @@ int checkLanguage() {
         case LANG_JAPANESE   : str = STR_LANG_JA; break;
         case LANG_GREEK      : str = STR_LANG_GR; break;
         case LANG_FINNISH    : str = STR_LANG_FI; break;
+        case LANG_CZECH      : str = STR_LANG_CZ; break;
     }
     return str - STR_LANG_EN;
 }
@@ -674,6 +681,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
 //VR Support
 #ifdef VR_SUPPORT
+// TODO: fix depth precision
+// TODO: fix water surface rendering
+// TODO: fix clipping
+// TODO: add MSAA support for render targets
+// TODO: add IK for arms
+// TODO: controls (WIP)
+
+#include "libs/openvr/openvr.h"
+
 vr::IVRSystem *hmd; // vrContext
 vr::IVRRenderModels* rm; // not currently in use
 vr::TrackedDevicePose_t tPose[vr::k_unMaxTrackedDeviceCount];
@@ -707,6 +723,8 @@ vr::VRActionHandle_t VRcDash = vr::k_ulInvalidActionHandle;
 vr::VRActionSetHandle_t m_actionsetTR = vr::k_ulInvalidActionSetHandle;
 
 void vrInit() {
+    vr::VR_InitLibrary("openvr_api.dll");
+
     vr::EVRInitError eError = vr::VRInitError_None;
     hmd = vr::VR_Init(&eError, vr::VRApplication_Scene);
     //rm = vr::VRRenderModels(); // initialize render models interface
@@ -722,29 +740,6 @@ void vrInit() {
         LOG("! compositor initialization failed\n");
         return;
     }
-
-    //set manifest
-    vr::VRInput()->SetActionManifestPath("C:/Users/Austin/Desktop/OpenLaraGitTest2/OpenLara/bin/TombRaidervr_actions.json"); // needs absolutepath
-        // get action handles
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Left",      &VRcLeft);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Right",     &VRcRight);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Up",        &VRcUp);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Down",      &VRcDown);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Jump",      &VRcJump);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Walk",      &VRcWalk);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Action",    &VRcAction);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Weapon",    &VRcWeapon);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Roll",      &VRcRoll);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Inventory", &VRcInventory);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Start",     &VRcStart);
-    //get actionsethandle
-    vr::VRInput()->GetActionSetHandle("/actions/demo",           &m_actionsetDemo);
-    //get input source handles
-    vr::VRInput()->GetInputSourceHandle("/user/hand/left",       &m_leftHand);
-    vr::VRInput()->GetInputSourceHandle("/user/hand/right",      &m_rightHand);
-    // aren't using right now
-    //vr::VRInput()->GetActionHandle("/actions/demo/in/TriggerHaptic", &m_actionTriggerHaptic);
-    //vr::VRInput()->GetActionHandle("/actions/demo/in/AnalogInput", &m_actionAnalongInput);
 }
 
 void vrInitTargets() {
@@ -758,6 +753,11 @@ void vrInitTargets() {
 void vrFree() {
     if (!hmd) return;
     vr::VR_Shutdown();
+    hmd = NULL;
+    Input::hmd.ready = false;
+    delete Core::eyeTex[0];
+    delete Core::eyeTex[1];
+    Core::eyeTex[0] = Core::eyeTex[1] = NULL;
 }
 
 mat4 convToMat4(const vr::HmdMatrix44_t &m) {
@@ -790,76 +790,92 @@ bool GetDigitalActionState(vr::VRActionHandle_t action, vr::VRInputValueHandle_t
     return actionData.bActive && actionData.bState;
 }
 
-
-void ProcessVREvent(const vr::VREvent_t &event) {
-    char buffer[1024] = "test";
-    switch (event.eventType) {
-    case vr::VREvent_TrackedDeviceActivated:
-        //SetupRenderModelForTrackedDevice( event.trackedDeviceIndex );
-        vr::RenderModel_t ** controllerRender;
-        hmd->GetStringTrackedDeviceProperty(event.trackedDeviceIndex, vr::ETrackedDeviceProperty::Prop_RenderModelName_String, buffer, 1024); // can be filled with an error,but I can't find the right type
-        //rm->LoadRenderModel_Async(buffer, controllerRender);
-        // need to process render model?
-        LOG("Device %u attached. Setting up render model\n", event.trackedDeviceIndex);
-        break;
-    case vr::VREvent_TrackedDeviceDeactivated:
-        LOG("Device %u detached.\n", event.trackedDeviceIndex);
-        Input::reset();
-        break;
-    case vr::VREvent_TrackedDeviceUpdated: //not sure what to do here
-        LOG("Device %u updated.\n", event.trackedDeviceIndex);
-        break;
-    }
-}
-
-void vrUpdateInput() {
+void vrUpdate() {
     if (!hmd) return;
+
     vr::VREvent_t event;
 
     while (hmd->PollNextEvent(&event, sizeof(event))) {
-        ProcessVREvent(event);
+        switch (event.eventType) {
+            case vr::VREvent_TrackedDeviceActivated:
+                break;
+            case vr::VREvent_TrackedDeviceDeactivated:
+                Input::reset();
+                break;
+            case vr::VREvent_TrackedDeviceUpdated:
+                break;
+        }
     }
 
-    vr::VRActiveActionSet_t actionSet = { 0 };
-    actionSet.ulActionSet = m_actionsetDemo;
-    vr::VRInput()->UpdateActionState(&actionSet, sizeof(actionSet), 1);
-
-    Input::hmd.state[cUp]        = GetDigitalActionState(VRcUp);
-    Input::hmd.state[cDown]      = GetDigitalActionState(VRcDown);
-    Input::hmd.state[cRight]     = GetDigitalActionState(VRcRight);
-    Input::hmd.state[cLeft]      = GetDigitalActionState(VRcLeft);
-    Input::hmd.state[cJump]      = GetDigitalActionState(VRcJump);
-    Input::hmd.state[cWalk]      = GetDigitalActionState(VRcWalk);
-    Input::hmd.state[cAction]    = GetDigitalActionState(VRcAction);
-    Input::hmd.state[cWeapon]    = GetDigitalActionState(VRcWeapon);
-    Input::hmd.state[cRoll]      = GetDigitalActionState(VRcRoll);
-    Input::hmd.state[cStart]     = GetDigitalActionState(VRcStart);
-    Input::hmd.state[cInventory] = GetDigitalActionState(VRcInventory);
-}
-
-void vrUpdateView() {
-    if (!hmd) return;
     vr::VRCompositor()->WaitGetPoses(tPose, vr::k_unMaxTrackedDeviceCount, NULL, 0);
 
-    if (!tPose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
-        return;
+    for (int id = 0; id < vr::k_unMaxTrackedDeviceCount; id++) {
+        vr::TrackedDevicePose_t &pose = tPose[id];
 
-    mat4 pL = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Left,  8.0f, 45.0f * 1024.0f));
-    mat4 pR = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Right, 8.0f, 45.0f * 1024.0f));
+        if (!pose.bPoseIsValid) {
+            continue;
+        }
 
-    mat4 head = convToMat4(tPose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking);
-    if (Input::hmd.zero.x == INF)
-        Input::hmd.zero = head.getPos();
-    head.setPos(head.getPos() - Input::hmd.zero);
+        switch (hmd->GetTrackedDeviceClass(id)) {
+            case vr::TrackedDeviceClass_HMD : {
+                mat4 pL = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Left,  8.0f, 45.0f * 1024.0f));
+                mat4 pR = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Right, 8.0f, 45.0f * 1024.0f));
 
-    mat4 vL = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Left));
-    mat4 vR = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Right));
+                mat4 head = convToMat4(pose.mDeviceToAbsoluteTracking);
+                if (Input::hmd.zero.x == INF) {
+                    Input::hmd.zero = head.getPos();
+                }
+                head.setPos(head.getPos() - Input::hmd.zero);
 
-    vL.setPos(vL.getPos() * ONE_METER);
-    vR.setPos(vR.getPos() * ONE_METER);
-    Input::hmd.setView(pL, pR, vL, vR);
+                mat4 vL = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Left));
+                mat4 vR = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Right));
 
-    Input::hmd.head = head;
+                vL.setPos(vL.getPos() * ONE_METER);
+                vR.setPos(vR.getPos() * ONE_METER);
+                Input::hmd.setView(pL, pR, vL, vR);
+
+                Input::hmd.head = head;
+                break;
+            }
+            case vr::TrackedDeviceClass_Controller : {
+                vr::VRControllerState_t state;
+                hmd->GetControllerState(id, &state, sizeof(state));
+
+                #define IS_DOWN(btn) ((state.ulButtonPressed & vr::ButtonMaskFromId(btn)) != 0)
+
+                if (!state.ulButtonPressed) {
+                 //   continue;
+                }
+
+                Input::setJoyDown(0, jkLeft,  IS_DOWN(vr::k_EButton_DPad_Left));
+                Input::setJoyDown(0, jkUp,    IS_DOWN(vr::k_EButton_DPad_Up));
+                Input::setJoyDown(0, jkRight, IS_DOWN(vr::k_EButton_DPad_Right));
+                Input::setJoyDown(0, jkDown,  IS_DOWN(vr::k_EButton_DPad_Down));
+
+                if (IS_DOWN(vr::k_EButton_Axis0)) {
+                     Input::setJoyPos(0, jkL, vec2(state.rAxis[0].x, -state.rAxis[0].y));
+                }
+
+                Input::setJoyDown(0, jkA, IS_DOWN(vr::k_EButton_Axis1) ? (state.rAxis[1].x > 0.5) : false);
+                Input::setJoyDown(0, jkY, IS_DOWN(vr::k_EButton_Grip));
+                Input::setJoyDown(0, jkX, IS_DOWN(vr::k_EButton_ApplicationMenu));
+
+                // TODO
+                switch (hmd->GetControllerRoleForTrackedDeviceIndex(id)) {
+                    case vr::TrackedControllerRole_LeftHand :
+                        // TODO
+                        break;
+                    case vr::TrackedControllerRole_RightHand :
+                        // TODO
+                        break;
+                    default : ;
+                }
+                break;
+
+                #undef IS_DOWN
+            }
+        }
+    }
 }
 
 void vrCompose() {
@@ -869,6 +885,25 @@ void vrCompose() {
     vr::Texture_t RTex = {(void*)(uintptr_t)Core::eyeTex[1]->ID, vr::TextureType_OpenGL, vr::ColorSpace_Gamma};
     vr::VRCompositor()->Submit(vr::Eye_Right, &RTex);
 }
+
+void osToggleVR(bool enable) {
+    if (enable) {
+        vrInit();
+        vrInitTargets();
+        Input::hmd.ready = hmd != NULL;
+        if (!hmd) {
+            Core::settings.detail.stereo = Core::Settings::STEREO_OFF;
+        }
+    } else {
+        vrFree();
+    }
+}
+
+#else
+
+void vrUpdate() {}
+void vrCompose() {}
+
 #endif // #ifdef VR_SUPPORT
 
 #ifdef _DEBUG
@@ -883,7 +918,7 @@ int main(int argc, char** argv) {
 #else
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     int argc = (lpCmdLine && strlen(lpCmdLine)) ? 2 : 1;
-    char *argv[] = { "", lpCmdLine };
+    const char *argv[] = { "", lpCmdLine };
 #endif
     cacheDir[0] = saveDir[0] = contentDir[0] = 0;
 
@@ -915,10 +950,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     ContextCreate();
 
-#ifdef VR_SUPPORT
-    vrInit();
-#endif
-
     Sound::channelsCount = 0;
 
     osStartTime = Core::getTime();
@@ -930,11 +961,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     Core::defLang = checkLanguage();
 
     Game::init(argc > 1 ? argv[1] : NULL);
-
-#ifdef VR_SUPPORT
-    Input::hmd.ready = hmd != NULL;
-    vrInitTargets();
-#endif
 
     SetWindowLong(hWnd, GWL_WNDPROC, (LONG)&WndProc);
 
@@ -954,17 +980,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
                 Core::quit();
         } else {
             joyUpdate();
-        #ifdef VR_SUPPORT
-            vrUpdateInput();
-        #endif
+            vrUpdate();
             if (Game::update()) {
-            #ifdef VR_SUPPORT
-                vrUpdateView();
-            #endif
                 Game::render();
-            #ifdef VR_SUPPORT
                 vrCompose();
-            #endif
                 Core::waitVBlank();
                 ContextSwap();
             }

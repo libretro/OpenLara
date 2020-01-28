@@ -258,6 +258,8 @@ namespace Debug {
                 return TR_TYPE_NAMES[entity.type - TR2_TYPES_START + (TR::Entity::TR1_TYPE_MAX - TR1_TYPES_START) + 1];
             if (entity.type < TR::Entity::TR3_TYPE_MAX)
                 return TR_TYPE_NAMES[entity.type - TR3_TYPES_START + (TR::Entity::TR1_TYPE_MAX - TR1_TYPES_START) + (TR::Entity::TR2_TYPE_MAX - TR2_TYPES_START) + 2];
+            if (entity.type < TR::Entity::TR4_TYPE_MAX)
+                return TR_TYPE_NAMES[entity.type - TR4_TYPES_START + (TR::Entity::TR1_TYPE_MAX - TR1_TYPES_START) + (TR::Entity::TR2_TYPE_MAX - TR2_TYPES_START) + (TR::Entity::TR3_TYPE_MAX - TR3_TYPES_START) + 3];
 
             return "UNKNOWN";
         }
@@ -622,7 +624,7 @@ namespace Debug {
                 Box box = controller->getBoundingBoxLocal();
                 Debug::Draw::box(matrix, box.min, box.max, bboxIntersect ? vec4(1, 0, 0, 1): vec4(1));
 
-                Sphere spheres[MAX_SPHERES];
+                Sphere spheres[MAX_JOINTS];
                 int count = controller->getSpheres(spheres);
 
                 for (int joint = 0; joint < count; joint++) {
@@ -744,9 +746,9 @@ namespace Debug {
                 for (int i = 0; i < info.trigCmdCount; i++) {
                     TR::FloorData::TriggerCommand &cmd = info.trigCmd[i];
                     
-                    const char *ent = (cmd.action == TR::Action::ACTIVATE || cmd.action == TR::Action::CAMERA_TARGET) ? getEntityName(level, level.entities[cmd.args]) : "";
+                    const char *ent = (cmd.action == TR::Action::ACTIVATE || cmd.action == TR::Action::CAMERA_TARGET) ? (cmd.args < level.entitiesBaseCount ? getEntityName(level, level.entities[cmd.args]) : "BAD_ENTITY_INDEX") : "";
                     sprintf(buf, "%s -> %s (%d)", getTriggerAction(level, cmd.action), ent, cmd.args);
-                    if (cmd.action == TR::Action::CAMERA_SWITCH) {
+                    if (cmd.action == TR::Action::CAMERA_SWITCH || cmd.action == TR::Action::FLYBY || cmd.action == TR::Action::CUTSCENE) {
                         i++;
                         sprintf(buf, "%s delay: %d speed: %d", buf, int(info.trigCmd[i].timer), int(info.trigCmd[i].speed));
                     }

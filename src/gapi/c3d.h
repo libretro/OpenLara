@@ -13,7 +13,7 @@
 #define DISPLAY_BUFFER_COUNT    2
 
 #define DISPLAY_TRANSFER_FLAGS (\
-      GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_XY) \
+      GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO) \
     | GX_TRANSFER_FLIP_VERT(0) \
     | GX_TRANSFER_OUT_TILED(0) \
     | GX_TRANSFER_RAW_COPY(0)  \
@@ -28,10 +28,31 @@ namespace GAPI {
 
 // Shader
     extern "C" {
-        #include "compose_shbin.h"
-        #include "gui_shbin.h"
+        #include "compose_sprite_shbin.h"
+        #include "compose_flash_shbin.h"
+        #include "compose_room_shbin.h"
+        #include "compose_entity_shbin.h"
+        #include "compose_mirror_shbin.h"
+        #include "shadow_entity_shbin.h"
         #include "filter_upscale_shbin.h"
+        #include "gui_shbin.h"
+        #include "dummy_shbin.h"
     }
+
+    #define SHADERS_LIST(E) \
+        E( compose_sprite  ) \
+        E( compose_flash   ) \
+        E( compose_room    ) \
+        E( compose_entity  ) \
+        E( compose_mirror  ) \
+        E( shadow_entity   ) \
+        E( filter_upscale  ) \
+        E( gui             ) \
+        E( dummy           )
+
+    #define SHADER_DECL(v) DVLB_s* v;
+    #define SHADER_INIT(v) v = DVLB_ParseFile((u32*)v##_shbin, v##_shbin_size);
+    #define SHADER_FREE(v) DVLB_Free(v);
 
     static const int bindings[uMAX] = {
         94, // uFlags
@@ -51,13 +72,12 @@ namespace GAPI {
         98, // uContacts
     };
 
-    DVLB_s* compose_dvlb;
-    DVLB_s* filter_upscale_dvlb;
-    DVLB_s* gui_dvlb;
+    SHADERS_LIST(SHADER_DECL);
 
     struct Shader {
         shaderProgram_s program;
-        C3D_TexEnv      env;
+        C3D_TexEnv      env[2];
+        int             envCount;
 
         int32   uID[uMAX];
 
@@ -72,24 +92,57 @@ namespace GAPI {
             DVLB_s* src = NULL;
 
             switch (pass) {
-                case Core::passFilter : src = filter_upscale_dvlb; break;
-                case Core::passGUI    : src = gui_dvlb;            break;
-                default               : src = compose_dvlb;
+                case Core::passCompose :
+                    switch (type) {
+                        case 0 : src = compose_sprite; break;
+                        case 1 : src = compose_flash;  break;
+                        case 2 : src = compose_room;   break;
+                        case 3 : src = compose_entity; break;
+                        case 4 : src = compose_mirror; break;
+                    }
+                    break;
+                case Core::passShadow : src = shadow_entity;  break;
+                case Core::passFilter : src = filter_upscale; break;
+                case Core::passGUI    : src = gui;            break;
+                default               : src = dummy;
             }
 
-	        shaderProgramSetVsh(&program, &src->DVLE[0]);
+            shaderProgramSetVsh(&program, &src->DVLE[0]);
+
+            bool underwater = false;
+            for (int i = 0; i < defCount; i++) {
+                if (def[i] == SD_UNDERWATER) {
+                    underwater = true;
+                }
+            }
 
             for (int ut = 0; ut < uMAX; ut++) {
                 uID[ut] = shaderInstanceGetUniformLocation(program.vertexShader, UniformName[ut]);
             }
 
             rebind = true;
+            envCount = 0;
 
-            C3D_TexEnvInit(&env);
-            C3D_TexEnvSrc(&env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
-            C3D_TexEnvFunc(&env, C3D_Both, GPU_MODULATE);
-            if (Core::pass == Core::passCompose && type == 2) { // rooms
-                C3D_TexEnvScale(&env, C3D_RGB, GPU_TEVSCALE_2);
+            for (int i = 0; i < COUNT(env); i++) {
+                C3D_TexEnvInit(env + i);
+            }
+
+            {
+                C3D_TexEnv *e = env + envCount;
+                C3D_TexEnvSrc(e, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+                C3D_TexEnvFunc(e, C3D_Both, GPU_MODULATE);
+                if (pass == Core::passCompose) {
+                    C3D_TexEnvScale(e, C3D_RGB, GPU_TEVSCALE_2);
+                }
+                envCount++;
+            }
+
+            if (underwater) {
+                C3D_TexEnv *e = env + envCount;
+                C3D_TexEnvSrc(e, C3D_Both, GPU_PREVIOUS, GPU_CONSTANT, GPU_PRIMARY_COLOR);
+                C3D_TexEnvFunc(e, C3D_Both, GPU_MODULATE);
+                C3D_TexEnvColor(e, 0xFFE5E599); // multiply by underwater color
+                envCount++;
             }
         }
 
@@ -108,7 +161,9 @@ namespace GAPI {
         void validate() {
             if (rebind) {
                 C3D_BindProgram(&program);
-                C3D_SetTexEnv(0, &env);
+                for (int i = 0; i < COUNT(env); i++) {
+                    C3D_SetTexEnv(i, env + i);
+                }
                 rebind = false;
             }
 
@@ -328,7 +383,7 @@ namespace GAPI {
                 vCount *= COUNT(chunks);
             }
 
-            VAO = new C3D_BufInfo[aCount + 1];
+            VAO = new C3D_BufInfo[aCount];
 
             iBuffer = (Index*)  linearAlloc(iCount * sizeof(Index));
             vBuffer = (Vertex*) linearAlloc(vCount * sizeof(Vertex));
@@ -382,16 +437,12 @@ namespace GAPI {
         }
 
         void bind(const MeshRange &range) {
-            C3D_BufInfo *vao = VAO;
+            ASSERT(range.aIndex > -1);
+            C3D_BufInfo *vao = VAO + range.aIndex;
 
-            if (range.aIndex == -1) {
-                vao += aCount - 1;
-                initVAO(vao, vBuffer + range.vStart + getChunk().vStart);
-            // workaround for passing "info != &ctx->bufInfo" check inside C3D_SetBufInfo for the same VAO pointers
-                C3D_BufInfo dummyBufInfo;
-                C3D_SetBufInfo(&dummyBufInfo);
+            if (dynamic) {
+                initVAO(vao, vBuffer + getChunk().vStart + range.vStart);
             } else {
-                vao += range.aIndex;
                 if (Core::active.VAO == vao) {
                     return;
                 }
@@ -415,17 +466,16 @@ namespace GAPI {
     C3D_AttrInfo      vertexAttribs;
 
     void init() {
+        gfxInitDefault();
+        consoleInit(GFX_BOTTOM, NULL);
+
         LOG("Vendor   : %s\n", "Nintendo");
         LOG("Renderer : %s\n", "PICA200 citro3D");
         LOG("Version  : %s\n", "1.0");
 
-        gfxInitDefault();
-        gfxSet3D(true);
-        consoleInit(GFX_BOTTOM, NULL);
-
         C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
-        defTarget[0] = C3D_RenderTargetCreate(240 * 2, 400 * 2, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
-        defTarget[1] = C3D_RenderTargetCreate(240 * 2, 400 * 2, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+        defTarget[0] = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+        defTarget[1] = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
         C3D_RenderTargetSetOutput(defTarget[0], GFX_TOP, GFX_LEFT,  DISPLAY_TRANSFER_FLAGS);
         C3D_RenderTargetSetOutput(defTarget[1], GFX_TOP, GFX_RIGHT, DISPLAY_TRANSFER_FLAGS);
         curTarget = defTarget[0];
@@ -444,45 +494,35 @@ namespace GAPI {
         AttrInfo_AddLoader(&vertexAttribs, aTexCoord , GPU_SHORT         , 4);
         AttrInfo_AddLoader(&vertexAttribs, aColor    , GPU_UNSIGNED_BYTE , 4);
         AttrInfo_AddLoader(&vertexAttribs, aLight    , GPU_UNSIGNED_BYTE , 4);
-        
-    // default texture env params
-        C3D_TexEnv* env = C3D_GetTexEnv(0);
-        C3D_TexEnvInit(env);
-        C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
-        C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
-        C3D_TexEnvScale(env, C3D_RGB, GPU_TEVSCALE_2);
 
-        //C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR);
-        //C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
-
-        clearColor = 0x68B0D8FF;
+        clearColor = 0; //0x68B0D8FF;
         colorMask  = GPU_WRITE_COLOR;
         depthMask  = GPU_WRITE_DEPTH;
 
     // init shaders
-        compose_dvlb        = DVLB_ParseFile((u32*)compose_shbin,        compose_shbin_size);
-        filter_upscale_dvlb = DVLB_ParseFile((u32*)filter_upscale_shbin, filter_upscale_shbin_size);
-        gui_dvlb            = DVLB_ParseFile((u32*)gui_shbin,            gui_shbin_size);
+        SHADERS_LIST(SHADER_INIT);
     }
 
     void deinit() {
-        DVLB_Free(compose_dvlb);
-        DVLB_Free(filter_upscale_dvlb);
-        DVLB_Free(gui_dvlb);
+        SHADERS_LIST(SHADER_FREE);
 
         C3D_Fini();
         gfxExit();
     }
+
+    inline mat4::ProjRange getProjRange() {
+        return mat4::PROJ_NEG_ZERO;
+    }
     
     mat4 ortho(float l, float r, float b, float t, float znear, float zfar) {
         mat4 m;
-        m.ortho(mat4::PROJ_NEG_ZERO, l, r, b, t, znear, zfar, true);
+        m.ortho(getProjRange(), l, r, b, t, znear, zfar, true);
         return m;
     }
 
     mat4 perspective(float fov, float aspect, float znear, float zfar, float eye) {
         mat4 m;
-        m.perspective(mat4::PROJ_NEG_ZERO, fov, aspect, znear, zfar, eye, true);
+        m.perspective(getProjRange(), fov, aspect, znear, zfar, eye, true);
         return m;
     }
 

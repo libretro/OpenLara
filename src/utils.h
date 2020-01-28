@@ -133,8 +133,8 @@ inline const T& clamp(const T &x, const T &a, const T &b) {
 }
 
 template <class T>
-inline const int sign(const T &x) {
-    return x > 0 ? 1 : (x < 0 ? -1 : 0);
+inline const T sign(const T &x) {
+    return (T)(x > 0 ? 1 : (x < 0 ? -1 : 0));
 }
 
 template <class T>
@@ -497,6 +497,8 @@ struct vec4 {
     vec4 operator * (const vec4 &v) const { return vec4(x*v.x, y*v.y, z*v.z, w*v.w); }
     vec4& operator *= (const vec4 &v) { x*=v.x; y*=v.y; z*=v.z; w*=v.w; return *this; }
 
+    float dot(const vec4 &v) const { return x * v.x + y * v.y + z * v.z + w * v.w; }
+
     vec4 lerp(const vec4 &v, const float t) const {
         if (t <= 0.0f) return *this;
         if (t >= 1.0f) return v;
@@ -656,8 +658,8 @@ struct mat4 {
 
         if (rotate90) {
             e00 = e11 = 0.0f;
-            e01 = 2.0f / (r - l);
-            e10 = 2.0f / (b - t);
+            e10 = 2.0f / (l - r);
+            e01 = 2.0f / (t - b);
         } else {
             e00 = 2.0f / (r - l);
             e11 = 2.0f / (t - b);
@@ -674,6 +676,7 @@ struct mat4 {
             case PROJ_NEG_ZERO :
                 e22 = 1.0f / (znear - zfar);
                 e23 = (znear + zfar) / (znear - zfar) * 0.5f - 0.5f;
+                e03 = -e03;
                 break;
             case PROJ_ZERO_POS :
                 e22 = 2.0f / (znear - zfar);
@@ -736,6 +739,16 @@ struct mat4 {
         }
 
         frustum(range, -x - eyeX, x - eyeX, -y - eyeY, y - eyeY, znear, zfar, rotate90);
+    }
+
+    void viewport(float x, float y, float width, float height, float n, float f) {
+        identity();
+        e00 = width   * 0.5f;
+        e11 = height  * 0.5f;
+        e22 = (f - n) * 0.5f;
+        e23 = (f + n) * 0.5f;
+        e03 = x + e00;
+        e13 = y + e11;
     }
 
     mat4(const vec3 &from, const vec3 &at, const vec3 &up) {
@@ -1445,6 +1458,29 @@ union Color16 { // RGBA5551
     operator Color32() const { return Color32((r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2), -a); }
 };
 
+struct ColorIndex4 {
+    uint8 a:4, b:4;
+};
+
+struct Tile4 {
+    ColorIndex4 index[256 * 256 / 2];
+};
+
+struct Tile8 {
+    uint8 index[256 * 256];
+};
+
+struct Tile16 {
+    Color16 color[256 * 256];
+};
+
+struct Tile32 {
+    Color32 color[256 * 256]; // + 128 for mips data
+};
+
+struct CLUT {
+    Color16 color[16];
+};
 
 namespace String {
 
@@ -2054,8 +2090,12 @@ struct Array {
         this->length = length;
     }
 
-    void clear() {
+    void reset() {
         length = 0;
+    }
+
+    void clear() {
+        reset();
         free(items);
         items = NULL;
     }
@@ -2069,7 +2109,7 @@ struct Array {
         return items[index]; 
     };
 
-    operator T*() const { return items; };
+    inline operator T*() const { return items; };
 };
 
 

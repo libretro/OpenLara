@@ -101,6 +101,9 @@
     <ClInclude Include="..\..\gapi\vk.h">
       <Filter>gapi</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\gapi\sw.h">
+      <Filter>gapi</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\lang\gr.h">
       <Filter>lang</Filter>
     </ClInclude>
@@ -114,6 +117,9 @@
       <Filter>lang</Filter>
     </ClInclude>
     <ClInclude Include="..\..\lang\fi.h">
+      <Filter>lang</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\lang\cz.h">
       <Filter>lang</Filter>
     </ClInclude>
     <ClInclude Include="..\..\extension.h" />

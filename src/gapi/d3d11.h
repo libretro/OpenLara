@@ -187,6 +187,7 @@ namespace GAPI {
                         case 1  : SHADER ( filter_downsample, v );  SHADER ( filter_downsample, f ); break;
                         case 3  : SHADER ( filter_grayscale,  v );  SHADER ( filter_grayscale,  f ); break;
                         case 4  : SHADER ( filter_blur,       v );  SHADER ( filter_blur,       f ); break;
+                        case 5  : SHADER ( filter_blur,       v );  SHADER ( filter_blur,       f ); break; // TODO anaglyph
                         default : ASSERT(false);
                     }
                     break;
@@ -606,7 +607,6 @@ namespace GAPI {
         support.texHalfLinear  = true;
         support.texHalf        = true;
         support.tex3D          = true;
-        support.clipDist       = true;
 
         #ifdef PROFILE
             support.profMarker = false;
@@ -649,6 +649,7 @@ namespace GAPI {
         {
             D3D11_RASTERIZER_DESC desc;
             memset(&desc, 0, sizeof(desc));
+            desc.ScissorEnable         = TRUE;
             desc.FrontCounterClockwise = TRUE;
             desc.FillMode = D3D11_FILL_SOLID;
             desc.CullMode = D3D11_CULL_NONE;
@@ -717,15 +718,19 @@ namespace GAPI {
         }
     }
 
+    inline mat4::ProjRange getProjRange() {
+        return mat4::PROJ_ZERO_POS;
+    }
+
     mat4 ortho(float l, float r, float b, float t, float znear, float zfar) {
         mat4 m;
-        m.ortho(mat4::PROJ_ZERO_POS, l, r, b, t, znear, zfar);
+        m.ortho(getProjRange(), l, r, b, t, znear, zfar);
         return m;
     }
 
     mat4 perspective(float fov, float aspect, float znear, float zfar, float eye) {
         mat4 m;
-        m.perspective(mat4::PROJ_ZERO_POS, fov, aspect, znear, zfar, eye);
+        m.perspective(getProjRange(), fov, aspect, znear, zfar, eye);
         return m;
     }
 
@@ -869,7 +874,7 @@ namespace GAPI {
 
         deviceContext->OMSetRenderTargets(1, &RTV, DSV);
 
-        Core::active.viewport = Viewport(0, 0, 0, 0); // forcing viewport reset
+        Core::active.viewport = short4(0, 0, 0, 0); // forcing viewport reset
     }
 
     void discardTarget(bool color, bool depth) {}
@@ -921,7 +926,7 @@ namespace GAPI {
         clearColor = color;
     }
 
-    void setViewport(const Viewport &vp) {
+    void setViewport(const short4 &v) {
         D3D11_VIEWPORT viewport;
         viewport.TopLeftX = (FLOAT)x;
         viewport.TopLeftY = (FLOAT)y;
@@ -929,7 +934,18 @@ namespace GAPI {
         viewport.Height   = (FLOAT)height;
         viewport.MinDepth = 0.0f;
         viewport.MaxDepth = 1.0f;
+
         deviceContext->RSSetViewports(1, &viewport);
+    }
+
+    void setScissor(const short4 &s) {
+        D3D11_RECT scissor;
+        scissor.left   = s.x;
+        scissor.top    = active.viewport.w - (s.y + s.w);
+        scissor.right  = s.x + s.z;
+        scissor.bottom = active.viewport.w - s.y;
+
+        deviceContext->RSSetScissorRects(1, &scissor);
     }
 
     void setDepthTest(bool enable) {

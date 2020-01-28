@@ -32,19 +32,42 @@ int osGetTimeMS() {
     return int(osGetTime() - osStartTime);
 }
 
+// backlight
+bool bottomScreenOn = true;
+
+void setBottomScreen(bool enable) {
+    gspLcdInit();
+    enable ? GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTTOM) : GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTTOM);
+    gspLcdExit();
+}
+
+aptHookCookie(cookie);
+
+void checkAptHook(APT_HookType hook, void *param) {
+    if (!bottomScreenOn) {
+        switch(hook) {
+            case APTHOOK_ONSUSPEND : setBottomScreen(1);
+                break;
+            case APTHOOK_ONRESTORE :
+            case APTHOOK_ONWAKEUP  : setBottomScreen(0);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 // input
 bool osJoyReady(int index) {
     return index == 0;
 }
-
-// backlight
-bool bottomScreenOn = true;
 
 void osJoyVibrate(int index, float L, float R) {
     //
 }
 
 void inputInit() {
+    aptHook(&cookie, checkAptHook, NULL);
     hidInit();
 }
 
@@ -57,7 +80,8 @@ void inputUpdate() {
 
     hidScanInput();
 
-    u64 mask = hidKeysDown() | hidKeysHeld();
+	u64 down = hidKeysDown();
+    u64 mask = down | hidKeysHeld();
 
     for (int i = 1; i < jkMAX; i++) {
         Input::setJoyDown(0, JoyKey(jkNone + i), (mask & keys[i]) != 0);
@@ -71,20 +95,15 @@ void inputUpdate() {
     if (fabsf(stickL.x) < 0.3f && fabsf(stickL.y) < 0.3f) stickL = vec2(0.0f);
     Input::setJoyPos(0, jkL, stickL);
 
-    if (hidKeysDown() & KEY_TOUCH) {
-        gspLcdInit();
-        if (bottomScreenOn) {
-            GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTTOM);
-            bottomScreenOn = false;
-        } else {
-            GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTTOM);
-            bottomScreenOn = true;
-        }
-        gspLcdExit();
+    if (down & KEY_TOUCH) {
+        bottomScreenOn = !bottomScreenOn;
+        bottomScreenOn ? setBottomScreen(1) : setBottomScreen(0);
     }
 }
 
 void inputFree() {
+    if (!bottomScreenOn)
+        setBottomScreen(1);
     hidExit();
 }
 
@@ -180,7 +199,7 @@ int main() {
 
     osStartTime = Core::getTime();
 
-    Game::init("PSXDATA/LEVEL1.PSX");
+    Game::init();
 
     while (aptMainLoop() && !Core::isQuit) {
         inputUpdate();
@@ -196,11 +215,6 @@ int main() {
 
     inputFree();
     sndFree();
-    if (!bottomScreenOn) {
-        gspLcdInit();
-        GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTTOM);
-        gspLcdExit();
-    }
     Game::deinit();
 
     return 0;

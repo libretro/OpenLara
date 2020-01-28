@@ -6,25 +6,35 @@
 #include "controller.h"
 #include "character.h"
 
-#define CAM_OFFSET_FOLLOW (1024.0f + 512.0f)
-#define CAM_OFFSET_COMBAT (2048.0f + 512.0f)
-#define CAM_OFFSET_LOOK   (512.0f)
-
 #define CAM_SPEED_FOLLOW  12
 #define CAM_SPEED_COMBAT  8
 
-#define CAM_FOCAL_LENGTH     1536.0f
 #define CAM_EYE_SEPARATION   16.0f
+#ifdef _OS_3DS
+    #define CAM_FOCAL_LENGTH     512.0f
+    #define CAM_OFFSET_FOLLOW    (1024.0f + 512.0f + 256.0f)
+#else
+    #define CAM_FOCAL_LENGTH     1536.0f
+    #define CAM_OFFSET_FOLLOW    (1024.0f + 512.0f)
+#endif
+
+#ifdef _OS_BITTBOY
+    #define CAM_OFFSET_COMBAT CAM_OFFSET_FOLLOW
+#else
+    #define CAM_OFFSET_COMBAT (2048.0f + 512.0f)
+#endif
+
+#define CAM_OFFSET_LOOK   (512.0f)
 
 #define CAM_FOLLOW_ANGLE     0.0f
 #define CAM_LOOK_ANGLE_XMAX  ( 55.0f * DEG2RAD)
 #define CAM_LOOK_ANGLE_XMIN  (-75.0f * DEG2RAD)
 #define CAM_LOOK_ANGLE_Y     ( 80.0f * DEG2RAD)
 
-#ifdef _OS_3DS
-    #define CAM_OFFSET_FOLLOW    (1024.0f + 512.0f + 256.0f)
-    #define CAM_FOCAL_LENGTH     512.0f
-#endif
+#define SPECTATOR_TIMER      1.0f
+#define SPECTATOR_POS_SPEED  4096.0f
+#define SPECTATOR_ROT_SPEED  PIH
+#define SPECTATOR_SMOOTH     4.0f
 
 struct Camera : ICamera {
     IGame      *game;
@@ -46,9 +56,18 @@ struct Camera : ICamera {
     int         speed;
     bool        smooth;
 
+    bool        spectator;
+    vec3        specPos, specPosSmooth;
+    vec3        specRot, specRotSmooth;
+    float       specTimer;
+    int16       specRoom;
+
     Camera(IGame *game, Character *owner) : ICamera(), game(game), level(game->getLevel()), frustum(new Frustum()), timer(-1.0f), viewIndex(-1), viewIndexLast(-1), viewTarget(NULL) {
         this->owner = owner;
         reset();
+
+        spectator = false;
+        specTimer = 0.0f;
     }
 
     void reset() {
@@ -86,7 +105,7 @@ struct Camera : ICamera {
     }
 
     virtual int getRoomIndex() const {
-        return eye.room;
+        return spectator ? specRoom : eye.room;
     }
 
     void updateListener(const mat4 &matrix) {
@@ -398,8 +417,11 @@ struct Camera : ICamera {
                 if (mode == MODE_LOOK) {
                     float d = 3.0f * Core::deltaTime;
 
-                    lookAngle.x += Input::joy[cameraIndex].L.y * d;
-                    lookAngle.y += Input::joy[cameraIndex].L.x * d;
+                    vec2 L = Input::joy[cameraIndex].L;
+                    if (L.length() < JOY_DEAD_ZONE) L = vec2(0.0f);
+
+                    lookAngle.x += L.y * d;
+                    lookAngle.y += L.x * d;
 
                     if (Input::state[cameraIndex][cUp])    lookAngle.x -= d;
                     if (Input::state[cameraIndex][cDown])  lookAngle.x += d;
@@ -498,11 +520,6 @@ struct Camera : ICamera {
 
         level->getSector(eye.room, eye.pos);
 
-        if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
-            updateListener(mViewInv * Input::hmd.head);
-        else
-            updateListener(mViewInv);
-
         smooth = true;
 
         viewIndexLast = viewIndex;
@@ -515,12 +532,81 @@ struct Camera : ICamera {
             }
         }
 
-        if (mode != MODE_HEAVY || timer == -1.0f) {
+        if (mode != MODE_CUTSCENE && (mode != MODE_HEAVY || timer == -1.0f)) {
             mode           = MODE_FOLLOW;
             viewIndex      = -1;
             viewTargetLast = viewTarget;
             viewTarget     = NULL;
         }
+
+        Input::Joystick &specJoy = Input::joy[cameraIndex];
+
+        if (specJoy.down[jkL] && specJoy.down[jkR]) {
+            specTimer += Core::deltaTime;
+            if (specTimer > SPECTATOR_TIMER) {
+                spectator = !spectator;
+                specTimer = 0.0f;
+                specPos   = eye.pos;
+                specRot   = targetAngle;
+                specRot.z = PI;
+                specRot.y += PI;
+                specPosSmooth = specPos;
+                specRotSmooth = specRot;
+                specRoom      = eye.room;
+            }
+        } else {
+            specTimer = 0.0f;
+        }
+
+        if (spectator) {
+            vec2  L = specJoy.L;
+            vec2  R = specJoy.R;
+            float U = specJoy.RT;
+            float D = specJoy.LT;
+
+            // apply dead zone
+            if (L.length() < 0.05f) L = vec2(0.0f);
+            if (R.length() < 0.05f) R = vec2(0.0f);
+            if (U < 0.05) U = 0.0f;
+            if (D < 0.05) D = 0.0f;
+
+            vec3 dir = vec3(L.x, D - U, L.y) * (SPECTATOR_POS_SPEED * Core::deltaTime);
+            vec2 rot = R * (SPECTATOR_ROT_SPEED * Core::deltaTime);
+
+            vec3 d = vec3(specRot.x, specRot.y);
+            vec3 r = d.cross(vec3(0.0f, 1.0f, 0.0f)).normal();
+
+            specPos += r * dir.x + vec3(0.0f, dir.y, 0.0f) + d * dir.z;
+
+            specRot.x += rot.y;
+            specRot.y += rot.x;
+            specRot.x = clamp(specRot.x, -PIH, +PIH);
+
+            specPosSmooth = specPosSmooth.lerp(specPos, SPECTATOR_SMOOTH * Core::deltaTime);
+            specRotSmooth = specRotSmooth.lerp(specRot, SPECTATOR_SMOOTH * Core::deltaTime);
+
+            mViewInv.identity();
+            mViewInv.translate(specPosSmooth);
+            mViewInv.rotateY(specRotSmooth.y);
+            mViewInv.rotateX(specRotSmooth.x);
+            mViewInv.rotateZ(specRotSmooth.z);
+
+            level->getSector(specRoom, specPos);
+            /*
+            for (int i = 0; i < level->roomsCount; i++) {
+                TR::Room &room = level->rooms[i];
+                if (room.contains(specPos)) {
+                    eye.room = i;
+                    break;
+                }
+            }
+            */
+        }
+
+        if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
+            updateListener(mViewInv * Input::hmd.head);
+        else
+            updateListener(mViewInv);
     }
 
     virtual void setup(bool calcMatrices) {
@@ -537,7 +623,7 @@ struct Camera : ICamera {
                 #ifdef _OS_3DS
                     Core::mViewInv.setPos(Core::mViewInv.getPos() + Core::mViewInv.right().xyz() * (Core::eye * CAM_EYE_SEPARATION / (firstPerson ? 8.0f : 1.0f) ) );
                 #else
-					Core::mViewInv.setPos(Core::mViewInv.getPos() + Core::mViewInv.right().xyz() * (Core::eye * CAM_EYE_SEPARATION) );
+                    Core::mViewInv.setPos(Core::mViewInv.getPos() + Core::mViewInv.right().xyz() * (Core::eye * CAM_EYE_SEPARATION) );
                 #endif
 
             if (reflectPlane) {
@@ -553,6 +639,10 @@ struct Camera : ICamera {
                 float eyeSep = (Core::eye * CAM_EYE_SEPARATION) * znear / CAM_FOCAL_LENGTH;
                 Core::mProj = GAPI::perspective(fov, aspect, znear, zfar, eyeSep);
             }
+
+            if (reflectPlane) {
+                setOblique(*reflectPlane);
+            }
         }
 
         Core::setViewProj(Core::mView, Core::mProj);
@@ -564,6 +654,25 @@ struct Camera : ICamera {
 
         frustum->pos = Core::viewPos.xyz();
         frustum->calcPlanes(Core::mViewProj);
+    }
+
+    void setOblique(const vec4 &clipPlane) { // http://www.terathon.com/code/oblique.html
+        vec4 p = Core::mViewInv.transpose() * clipPlane;
+
+        vec4 q;
+        q.x = (sign(p.x) + Core::mProj.e02) / Core::mProj.e00;
+        q.y = (sign(p.y) + Core::mProj.e12) / Core::mProj.e11;
+        q.z = -1.0f;
+        q.w = (1.0f + Core::mProj.e22) / Core::mProj.e23;
+
+        float f = GAPI::getProjRange() == mat4::PROJ_NEG_POS ? 2.0f : 1.0f;
+
+        vec4 c = p * (f / p.dot(q));
+
+        Core::mProj.e20 = c.x;
+        Core::mProj.e21 = c.y;
+        Core::mProj.e22 = c.z + (f - 1.0f);
+        Core::mProj.e23 = c.w;
     }
 
     void changeView(bool firstPerson) {

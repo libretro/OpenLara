@@ -7,8 +7,9 @@
 
 #define MAX_RESERVED_ENTITIES 128
 #define MAX_TRIGGER_COMMANDS  32
-#define MAX_MESHES            512
+#define MAX_MESHES            1024
 #define MAX_WEAPONS           4
+#define MAX_JOINTS            32
 
 // Lara's height in units / height in meters
 #define ONE_METER             (768.0f / 1.8f)
@@ -16,6 +17,8 @@
 #define TR1_TYPES_START       0
 #define TR2_TYPES_START       1000
 #define TR3_TYPES_START       2000
+#define TR4_TYPES_START       3000
+
 
 #define TR_TYPES(E) \
     E( LARA                  = TR1_TYPES_START) \
@@ -850,7 +853,528 @@
     E( UNUSED_TR3_371        ) \
     E( UNUSED_TR3_372        ) \
     E( ELECTRIC_SWITCH       ) \
-    E( TR3_TYPE_MAX          )
+    E( TR3_TYPE_MAX          ) \
+    E( ___LARA               = TR4_TYPES_START ) \
+    E( ___LARA_PISTOLS       ) \
+    E( ___LARA_UZIS          ) \
+    E( ___LARA_SHOTGUN       ) \
+    E( LARA_CROSSBOW         ) \
+    E( ___LARA_GRENADE       ) \
+    E( LARA_REVOLVER         ) \
+    E( ___LARA_FLARE         ) \
+    E( ___LARA_SKIN          ) \
+    E( LARA_SKIN_JOINTS      ) \
+    E( LARA_SCREAM           ) \
+    E( LARA_CROSSBOW_LASER   ) \
+    E( LARA_REVOLVER_LASER   ) \
+    E( LARA_HOLSTERS         ) \
+    E( LARA_HOLSTERS_PISTOLS ) \
+    E( LARA_HOLSTERS_UZIS    ) \
+    E( LARA_HOLSTERS_REVOLVER ) \
+    E( LARA_HEAD1            ) \
+    E( LARA_HEAD2            ) \
+    E( LARA_HEAD3            ) \
+    E( LARA_HEAD4            ) \
+    E( ACTOR1_HEAD1          ) \
+    E( ACTOR1_HEAD2          ) \
+    E( ACTOR2_HEAD1          ) \
+    E( ACTOR2_HEAD2          ) \
+    E( LARA_WATER_MESH       ) \
+    E( LARA_PETROL_MESH      ) \
+    E( LARA_DIRT_MESH        ) \
+    E( CROWBAR_ANIM          ) \
+    E( TORCH_ANIM            ) \
+    E( ___LARA_BRAID         ) \
+    E( MOTORBIKE             ) \
+    E( JEEP                  ) \
+    E( VEHICLE_EXTRA         ) \
+    E( ENEMY_JEEP            ) \
+    E( SKELETON              ) \
+    E( SKELETON_MIP          ) \
+    E( GUIDE                 ) \
+    E( GUIDE_MIP             ) \
+    E( VON_CROY              ) \
+    E( VON_CROY_MIP          ) \
+    E( BADDY_1               ) \
+    E( BADDY_1_MIP           ) \
+    E( BADDY_2               ) \
+    E( BADDY_2_MIP           ) \
+    E( SETHA                 ) \
+    E( SETHA_MIP             ) \
+    E( MUMMY                 ) \
+    E( MUMMY_MIP             ) \
+    E( SPHINX                ) \
+    E( SPHINX_MIP            ) \
+    E( CROCODILE             ) \
+    E( CROCODILE_MIP         ) \
+    E( HORSEMAN              ) \
+    E( HORSEMAN_MIP          ) \
+    E( SCORPION              ) \
+    E( SCORPION_MIP          ) \
+    E( JEAN_YVES             ) \
+    E( JEAN_YVES_MIP         ) \
+    E( TROOPS                ) \
+    E( TROOPS_MIP            ) \
+    E( KNIGHTS_TEMPLAR       ) \
+    E( KNIGHTS_TEMPLAR_MIP   ) \
+    E( MUTANT                ) \
+    E( MUTANT_MIP            ) \
+    E( HORSE                 ) \
+    E( HORSE_MIP             ) \
+    E( BABOON_NORMAL         ) \
+    E( BABOON_NORMAL_MIP     ) \
+    E( BABOON_INV            ) \
+    E( BABOON_INV_MIP        ) \
+    E( BABOON_SILENT         ) \
+    E( BABOON_SILENT_MIP     ) \
+    E( WILD_BOAR             ) \
+    E( WILD_BOAR_MIP         ) \
+    E( HARPY                 ) \
+    E( HARPY_MIP             ) \
+    E( DEMIGOD1              ) \
+    E( DEMIGOD1_MIP          ) \
+    E( DEMIGOD2              ) \
+    E( DEMIGOD2_MIP          ) \
+    E( DEMIGOD3              ) \
+    E( DEMIGOD3_MIP          ) \
+    E( LITTLE_BEETLE         ) \
+    E( BIG_BEETLE            ) \
+    E( BIG_BEETLE_MIP        ) \
+    E( WRAITH1               ) \
+    E( WRAITH2               ) \
+    E( WRAITH3               ) \
+    E( WRAITH4               ) \
+    E( BAT                   ) \
+    E( DOG                   ) \
+    E( DOG_MIP               ) \
+    E( HAMMERHEAD            ) \
+    E( HAMMERHEAD_MIP        ) \
+    E( SAS                   ) \
+    E( SAS_MIP               ) \
+    E( SAS_DYING             ) \
+    E( SAS_DYING_MIP         ) \
+    E( SAS_CAPTAIN           ) \
+    E( SAS_CAPTAIN_MIP       ) \
+    E( SAS_DRAG_BLOKE        ) \
+    E( AHMET                 ) \
+    E( AHMET_MIP             ) \
+    E( LARA_DOUBLE           ) \
+    E( LARA_DOUBLE_MIP       ) \
+    E( SMALL_SCORPION        ) \
+    E( LOCUST_EMITTER        ) \
+    E( GAME_PIECE1           ) \
+    E( GAME_PIECE2           ) \
+    E( GAME_PIECE3           ) \
+    E( ENEMY_PIECE           ) \
+    E( WHEEL_OF_FORTUNE      ) \
+    E( SCALES                ) \
+    E( DARTS                 ) \
+    E( DART_EMITTER          ) \
+    E( HOMING_DART_EMITTER   ) \
+    E( FALLING_CEILING       ) \
+    E( FALLING_BLOCK         ) \
+    E( FALLING_BLOCK2        ) \
+    E( SMASHABLE_BIKE_WALL   ) \
+    E( SMASHABLE_BIKE_FLOOR  ) \
+    E( TRAPDOOR1             ) \
+    E( TRAPDOOR2             ) \
+    E( TRAPDOOR3             ) \
+    E( FLOOR_TRAPDOOR1       ) \
+    E( FLOOR_TRAPDOOR2       ) \
+    E( CEILING_TRAPDOOR1     ) \
+    E( CEILING_TRAPDOOR2     ) \
+    E( SCALING_TRAPDOOR      ) \
+    E( ROLLINGBALL           ) \
+    E( SPIKEY_FLOOR          ) \
+    E( TEETH_SPIKES          ) \
+    E( JOBY_SPIKES           ) \
+    E( SLICER_DICER          ) \
+    E( CHAIN                 ) \
+    E( PLOUGH                ) \
+    E( STARGATE              ) \
+    E( HAMMER                ) \
+    E( BURNING_FLOOR         ) \
+    E( COG                   ) \
+    E( SPIKEBALL             ) \
+    E( ___FLAME              ) \
+    E( ___TRAP_FLAME_EMITTER ) \
+    E( TRAP_FLAME_EMITTER2   ) \
+    E( TRAP_FLAME_EMITTER3   ) \
+    E( ROPE                  ) \
+    E( FIREROPE              ) \
+    E( POLEROPE              ) \
+    E( ONEBLOCK_PLATFORM     ) \
+    E( TWOBLOCK_PLATFORM     ) \
+    E( RAISING_BLOCK1        ) \
+    E( RAISING_BLOCK2        ) \
+    E( EXPANDING_PLATFORM    ) \
+    E( SQUISHY_BLOCK1        ) \
+    E( SQUISHY_BLOCK2        ) \
+    E( ___BLOCK_1            ) \
+    E( ___BLOCK_2            ) \
+    E( ___BLOCK_3            ) \
+    E( ___BLOCK_4            ) \
+    E( BLOCK_5               ) \
+    E( ___TRIPWIRE           ) \
+    E( SENTRY_GUN            ) \
+    E( MINE                  ) \
+    E( MAPPER                ) \
+    E( OBELISK               ) \
+    E( FLOOR_4BLADE          ) \
+    E( ROOF_4BLADE           ) \
+    E( BIRD_BLADE            ) \
+    E( CATWALK_BLADE         ) \
+    E( MOVING_BLADE          ) \
+    E( PLINTH_BLADE          ) \
+    E( SETH_BLADE            ) \
+    E( LIGHTNING_CONDUCTOR   ) \
+    E( ELEMENT_PUZZLE        ) \
+    E( PUZZLE_ITEM1          ) \
+    E( PUZZLE_ITEM2          ) \
+    E( PUZZLE_ITEM3          ) \
+    E( PUZZLE_ITEM4          ) \
+    E( PUZZLE_ITEM5          ) \
+    E( PUZZLE_ITEM6          ) \
+    E( PUZZLE_ITEM7          ) \
+    E( PUZZLE_ITEM8          ) \
+    E( PUZZLE_ITEM9          ) \
+    E( PUZZLE_ITEM10         ) \
+    E( PUZZLE_ITEM11         ) \
+    E( PUZZLE_ITEM12         ) \
+    E( PUZZLE_ITEM1_COMBO1   ) \
+    E( PUZZLE_ITEM1_COMBO2   ) \
+    E( PUZZLE_ITEM2_COMBO1   ) \
+    E( PUZZLE_ITEM2_COMBO2   ) \
+    E( PUZZLE_ITEM3_COMBO1   ) \
+    E( PUZZLE_ITEM3_COMBO2   ) \
+    E( PUZZLE_ITEM4_COMBO1   ) \
+    E( PUZZLE_ITEM4_COMBO2   ) \
+    E( PUZZLE_ITEM5_COMBO1   ) \
+    E( PUZZLE_ITEM5_COMBO2   ) \
+    E( PUZZLE_ITEM6_COMBO1   ) \
+    E( PUZZLE_ITEM6_COMBO2   ) \
+    E( PUZZLE_ITEM7_COMBO1   ) \
+    E( PUZZLE_ITEM7_COMBO2   ) \
+    E( PUZZLE_ITEM8_COMBO1   ) \
+    E( PUZZLE_ITEM8_COMBO2   ) \
+    E( KEY_ITEM1             ) \
+    E( KEY_ITEM2             ) \
+    E( KEY_ITEM3             ) \
+    E( KEY_ITEM4             ) \
+    E( KEY_ITEM5             ) \
+    E( KEY_ITEM6             ) \
+    E( KEY_ITEM7             ) \
+    E( KEY_ITEM8             ) \
+    E( KEY_ITEM9             ) \
+    E( KEY_ITEM10            ) \
+    E( KEY_ITEM11            ) \
+    E( KEY_ITEM12            ) \
+    E( KEY_ITEM1_COMBO1      ) \
+    E( KEY_ITEM1_COMBO2      ) \
+    E( KEY_ITEM2_COMBO1      ) \
+    E( KEY_ITEM2_COMBO2      ) \
+    E( KEY_ITEM3_COMBO1      ) \
+    E( KEY_ITEM3_COMBO2      ) \
+    E( KEY_ITEM4_COMBO1      ) \
+    E( KEY_ITEM4_COMBO2      ) \
+    E( KEY_ITEM5_COMBO1      ) \
+    E( KEY_ITEM5_COMBO2      ) \
+    E( KEY_ITEM6_COMBO1      ) \
+    E( KEY_ITEM6_COMBO2      ) \
+    E( KEY_ITEM7_COMBO1      ) \
+    E( KEY_ITEM7_COMBO2      ) \
+    E( KEY_ITEM8_COMBO1      ) \
+    E( KEY_ITEM8_COMBO2      ) \
+    E( PICKUP_ITEM1          ) \
+    E( PICKUP_ITEM2          ) \
+    E( PICKUP_ITEM3          ) \
+    E( PICKUP_ITEM4          ) \
+    E( PICKUP_ITEM1_COMBO1   ) \
+    E( PICKUP_ITEM1_COMBO2   ) \
+    E( PICKUP_ITEM2_COMBO1   ) \
+    E( PICKUP_ITEM2_COMBO2   ) \
+    E( PICKUP_ITEM3_COMBO1   ) \
+    E( PICKUP_ITEM3_COMBO2   ) \
+    E( PICKUP_ITEM4_COMBO1   ) \
+    E( PICKUP_ITEM4_COMBO2   ) \
+    E( EXAMINE1              ) \
+    E( EXAMINE2              ) \
+    E( EXAMINE3              ) \
+    E( CROWBAR_ITEM          ) \
+    E( BURNING_TORCH_ITEM    ) \
+    E( CLOCKWORK_BEETLE      ) \
+    E( CLOCKWORK_BEETLE_COMBO1 ) \
+    E( CLOCKWORK_BEETLE_COMBO2 ) \
+    E( MINE_DETECTOR         ) \
+    E( QUEST_ITEM1           ) \
+    E( QUEST_ITEM2           ) \
+    E( QUEST_ITEM3           ) \
+    E( QUEST_ITEM4           ) \
+    E( QUEST_ITEM5           ) \
+    E( QUEST_ITEM6           ) \
+    E( MAP                   ) \
+    E( SECRET_MAP            ) \
+    E( PUZZLE_HOLE1          ) \
+    E( PUZZLE_HOLE2          ) \
+    E( PUZZLE_HOLE3          ) \
+    E( PUZZLE_HOLE4          ) \
+    E( PUZZLE_HOLE5          ) \
+    E( PUZZLE_HOLE6          ) \
+    E( PUZZLE_HOLE7          ) \
+    E( PUZZLE_HOLE8          ) \
+    E( PUZZLE_HOLE9          ) \
+    E( PUZZLE_HOLE10         ) \
+    E( PUZZLE_HOLE11         ) \
+    E( PUZZLE_HOLE12         ) \
+    E( PUZZLE_DONE1          ) \
+    E( PUZZLE_DONE2          ) \
+    E( PUZZLE_DONE3          ) \
+    E( PUZZLE_DONE4          ) \
+    E( PUZZLE_DONE5          ) \
+    E( PUZZLE_DONE6          ) \
+    E( PUZZLE_DONE7          ) \
+    E( PUZZLE_DONE8          ) \
+    E( PUZZLE_DONE9          ) \
+    E( PUZZLE_DONE10         ) \
+    E( PUZZLE_DONE11         ) \
+    E( PUZZLE_DONE12         ) \
+    E( KEY_HOLE1             ) \
+    E( KEY_HOLE2             ) \
+    E( KEY_HOLE3             ) \
+    E( KEY_HOLE4             ) \
+    E( KEY_HOLE5             ) \
+    E( KEY_HOLE6             ) \
+    E( KEY_HOLE7             ) \
+    E( KEY_HOLE8             ) \
+    E( KEY_HOLE9             ) \
+    E( KEY_HOLE10            ) \
+    E( KEY_HOLE11            ) \
+    E( KEY_HOLE12            ) \
+    E( WATERSKIN1_EMPTY      ) \
+    E( WATERSKIN1_1          ) \
+    E( WATERSKIN1_2          ) \
+    E( WATERSKIN1_3          ) \
+    E( WATERSKIN2_EMPTY      ) \
+    E( WATERSKIN2_1          ) \
+    E( WATERSKIN2_2          ) \
+    E( WATERSKIN2_3          ) \
+    E( WATERSKIN2_4          ) \
+    E( WATERSKIN2_5          ) \
+    E( SWITCH_TYPE1          ) \
+    E( SWITCH_TYPE2          ) \
+    E( SWITCH_TYPE3          ) \
+    E( SWITCH_TYPE4          ) \
+    E( SWITCH_TYPE5          ) \
+    E( SWITCH_TYPE6          ) \
+    E( SWITCH_TYPE7          ) \
+    E( SWITCH_TYPE8          ) \
+    E( UNDERWATER_SWITCH1    ) \
+    E( UNDERWATER_SWITCH2    ) \
+    E( TURN_SWITCH           ) \
+    E( COG_SWITCH            ) \
+    E( LEVER_SWITCH          ) \
+    E( JUMP_SWITCH           ) \
+    E( CROWBAR_SWITCH        ) \
+    E( PULLEY                ) \
+    E( DOOR_TYPE1            ) \
+    E( DOOR_TYPE2            ) \
+    E( DOOR_TYPE3            ) \
+    E( DOOR_TYPE4            ) \
+    E( DOOR_TYPE5            ) \
+    E( DOOR_TYPE6            ) \
+    E( DOOR_TYPE7            ) \
+    E( DOOR_TYPE8            ) \
+    E( PUSHPULL_DOOR1        ) \
+    E( PUSHPULL_DOOR2        ) \
+    E( KICK_DOOR1            ) \
+    E( KICK_DOOR2            ) \
+    E( UNDERWATER_DOOR       ) \
+    E( DOUBLE_DOORS          ) \
+    E( BRIDGE_FLAT           ) \
+    E( BRIDGE_TILT1          ) \
+    E( BRIDGE_TILT2          ) \
+    E( SARCOPHAGUS           ) \
+    E( SEQUENCE_DOOR1        ) \
+    E( SEQUENCE_SWITCH1      ) \
+    E( SEQUENCE_SWITCH2      ) \
+    E( SEQUENCE_SWITCH3      ) \
+    E( SARCOPHAGUS_CUT       ) \
+    E( HORUS_STATUE          ) \
+    E( GOD_HEAD              ) \
+    E( SETH_DOOR             ) \
+    E( STATUE_PLINTH         ) \
+    E( PISTOLS_ITEM          ) \
+    E( PISTOLS_AMMO_ITEM     ) \
+    E( UZI_ITEM              ) \
+    E( UZI_AMMO_ITEM         ) \
+    E( SHOTGUN_ITEM          ) \
+    E( SHOTGUN_AMMO1_ITEM    ) \
+    E( SHOTGUN_AMMO2_ITEM    ) \
+    E( CROSSBOW_ITEM         ) \
+    E( CROSSBOW_AMMO1_ITEM   ) \
+    E( CROSSBOW_AMMO2_ITEM   ) \
+    E( CROSSBOW_AMMO3_ITEM   ) \
+    E( CROSSBOW_BOLT         ) \
+    E( GRENADE_GUN_ITEM      ) \
+    E( GRENADE_GUN_AMMO1_ITEM ) \
+    E( GRENADE_GUN_AMMO2_ITEM ) \
+    E( GRENADE_GUN_AMMO3_ITEM ) \
+    E( ___GRENADE            ) \
+    E( REVOLVER_ITEM         ) \
+    E( REVOLVER_AMMO_ITEM    ) \
+    E( ___INV_MEDIKIT_BIG    ) \
+    E( ___INV_MEDIKIT_SMALL  ) \
+    E( LASERSIGHT_ITEM       ) \
+    E( BINOCULARS_ITEM       ) \
+    E( ___FLARES             ) \
+    E( ___INV_FLARES         ) \
+    E( ___INV_PASSPORT       ) \
+    E( ___INV_COMPASS        ) \
+    E( MEMCARD_LOAD_INV_ITEM ) \
+    E( MEMCARD_SAVE_INV_ITEM ) \
+    E( PC_LOAD_INV_ITEM      ) \
+    E( PC_SAVE_INV_ITEM      ) \
+    E( SMOKE_EMITTER_WHITE   ) \
+    E( SMOKE_EMITTER_BLACK   ) \
+    E( STEAM_EMITTER         ) \
+    E( ___EARTHQUAKE         ) \
+    E( BUBBLES               ) \
+    E( WATERFALLMIST         ) \
+    E( GUNSHELL              ) \
+    E( SHOTGUNSHELL          ) \
+    E( ___MUZZLE_FLASH       ) \
+    E( BUTTERFLY             ) \
+    E( SPRINKLER             ) \
+    E( RED_LIGHT             ) \
+    E( GREEN_LIGHT           ) \
+    E( BLUE_LIGHT            ) \
+    E( AMBER_LIGHT           ) \
+    E( WHITE_LIGHT           ) \
+    E( BLINKING_LIGHT        ) \
+    E( LENS_FLARE            ) \
+    E( ___AI_GUARD           ) \
+    E( ___AI_AMBUSH          ) \
+    E( AI_PATROL1            ) \
+    E( ___AI_MODIFY          ) \
+    E( ___AI_FOLLOW          ) \
+    E( AI_PATROL2            ) \
+    E( AI_X1                 ) \
+    E( AI_X2                 ) \
+    E( LARA_START_POS        ) \
+    E( ___KILL_ALL_TRIGGERS  ) \
+    E( TRIGGER_TRIGGERER     ) \
+    E( SMASH_OBJECT1         ) \
+    E( SMASH_OBJECT2         ) \
+    E( SMASH_OBJECT3         ) \
+    E( SMASH_OBJECT4         ) \
+    E( SMASH_OBJECT5         ) \
+    E( SMASH_OBJECT6         ) \
+    E( SMASH_OBJECT7         ) \
+    E( SMASH_OBJECT8         ) \
+    E( MESHSWAP1             ) \
+    E( MESHSWAP2             ) \
+    E( MESHSWAP3             ) \
+    E( DEATH_SLIDE           ) \
+    E( BODY_PART             ) \
+    E( CAMERA_TARGET         ) \
+    E( WATERFALL1            ) \
+    E( WATERFALL2            ) \
+    E( WATERFALL3            ) \
+    E( PLANET_EFFECT         ) \
+    E( ANIMATING1            ) \
+    E( ANIMATING1_MIP        ) \
+    E( ANIMATING2            ) \
+    E( ANIMATING2_MIP        ) \
+    E( ANIMATING3            ) \
+    E( ANIMATING3_MIP        ) \
+    E( ANIMATING4            ) \
+    E( ANIMATING4_MIP        ) \
+    E( ANIMATING5            ) \
+    E( ANIMATING5_MIP        ) \
+    E( ANIMATING6            ) \
+    E( ANIMATING6_MIP        ) \
+    E( ANIMATING7            ) \
+    E( ANIMATING7_MIP        ) \
+    E( ANIMATING8            ) \
+    E( ANIMATING8_MIP        ) \
+    E( ANIMATING9            ) \
+    E( ANIMATING9_MIP        ) \
+    E( ANIMATING10           ) \
+    E( ANIMATING10_MIP       ) \
+    E( ANIMATING11           ) \
+    E( ANIMATING11_MIP       ) \
+    E( ANIMATING12           ) \
+    E( ANIMATING12_MIP       ) \
+    E( ANIMATING13           ) \
+    E( ANIMATING13_MIP       ) \
+    E( ANIMATING14           ) \
+    E( ANIMATING14_MIP       ) \
+    E( ANIMATING15           ) \
+    E( ANIMATING15_MIP       ) \
+    E( ANIMATING16           ) \
+    E( ANIMATING16_MIP       ) \
+    E( HORIZON               ) \
+    E( SKY_GRAPHICS          ) \
+    E( BINOCULAR_GRAPHICS    ) \
+    E( TARGET_GRAPHICS       ) \
+    E( ___GLYPHS             ) \
+    E( ___MISC_SPRITES       ) \
+    E( MOTOR_BOAT            ) \
+    E( MOTOR_BOAT_LARA       ) \
+    E( RUBBER_BOAT           ) \
+    E( RUBBER_BOAT_LARA      ) \
+    E( MOTORBIKE_LARA        ) \
+    E( FONT_GRAPHICS         ) \
+    E( PARALLEL_BARS         ) \
+    E( PANEL_BORDER          ) \
+    E( PANEL_MIDDLE          ) \
+    E( PANEL_CORNER          ) \
+    E( PANEL_DIAGONAL        ) \
+    E( PANEL_STRIP           ) \
+    E( PANEL_HALF_BORDER1    ) \
+    E( PANEL_HALF_BORDER2    ) \
+    E( PANEL_MIDDLE_CORNER   ) \
+    E( TIGHT_ROPE            ) \
+    E( LASER_HEAD            ) \
+    E( LASER_HEAD_BASE       ) \
+    E( LASER_HEAD_TENTACLE   ) \
+    E( HYDRA                 ) \
+    E( HYDRA_MISSILE         ) \
+    E( ENEMY_SUB_MARINE      ) \
+    E( ENEMY_SUB_MARINE_MIP  ) \
+    E( SUB_MARINE_MISSILE    ) \
+    E( FROG_MAN              ) \
+    E( FROG_MAN_HARPOON      ) \
+    E( FISH_EMITTER          ) \
+    E( KAYAK                 ) \
+    E( KAYAK_LARA            ) \
+    E( CUSTOM_SPRITES        ) \
+    E( BRIDGE_TILT3          ) \
+    E( BRIDGE_TILT4          ) \
+    E( BRIDGE_CUSTOM         ) \
+    E( ROBOT_CLEANER         ) \
+    E( ROBOT_STAR_WARS       ) \
+    E( MECH_WARRIOR          ) \
+    E( MECH_WARRIOR_LARA     ) \
+    E( UW_PROPULSOR          ) \
+    E( UW_PROPULSOR_LARA     ) \
+    E( MINE_CART             ) \
+    E( MINE_CART_LARA        ) \
+    E( NEW_SLOT5             ) \
+    E( NEW_SLOT6             ) \
+    E( NEW_SLOT7             ) \
+    E( NEW_SLOT8             ) \
+    E( NEW_SLOT9             ) \
+    E( NEW_SLOT10            ) \
+    E( NEW_SLOT11            ) \
+    E( NEW_SLOT12            ) \
+    E( NEW_SLOT13            ) \
+    E( NEW_SLOT14            ) \
+    E( NEW_SLOT15            ) \
+    E( NEW_SLOT16            ) \
+    E( NEW_SLOT17            ) \
+    E( NEW_SLOT18            ) \
+    E( TR4_TYPE_MAX          )
 
 namespace TR {
 
@@ -1031,6 +1555,9 @@ namespace TR {
             SOUNDTRACK      ,   // play soundtrack
             EFFECT          ,   // special effect trigger
             SECRET          ,   // secret found
+            CLEAR_BODIES    ,   // clear all dead bodies
+            FLYBY           ,   // play flyby camera sequence
+            CUTSCENE        ,   // play cutscene
         };
     };
 
@@ -1088,9 +1615,13 @@ namespace TR {
         };
     }
 
-    struct fixed {
-        uint16  L;
-        int16   H;
+    union fixed {
+        uint32 value;
+        struct {
+            uint16 L;
+            int16  H;
+        };
+
         operator float() const {
             return H + L / 65535.0f;
         }
@@ -1169,9 +1700,19 @@ namespace TR {
             uint16 value;
         } flags;
 
+        union {
+            struct { uint16 additive:1, env:1, shininess:6; };
+            uint16 value;
+        } effects;
+
         short3 normal;
         uint16 vertices[4];
         uint8  triangle:1, colored:1, water:1, flip:5;
+
+        Face() : triangle(0), colored(0), water(0), flip(0) {
+            flags.value   = 0;
+            effects.value = 0;
+        }
 
         static int cmp(const Face &a, const Face &b) {
             int aIndex = a.flags.texture;
@@ -1210,30 +1751,6 @@ namespace TR {
 
     #define FACE4_SIZE (sizeof(uint16) + sizeof(uint16) * 4) // flags + vertices[4]
     #define FACE3_SIZE (FACE4_SIZE - sizeof(uint16))
-
-    struct ColorIndex4 {
-        uint8 a:4, b:4;
-    };
-
-    struct Tile4 {
-        ColorIndex4 index[256 * 256 / 2];
-    };
-
-    struct Tile8 {
-        uint8 index[256 * 256];
-    };
-
-    struct Tile16 {
-        Color16 color[256 * 256];
-    };
-
-    struct Tile32 {
-        Color32 color[256 * 256]; // + 128 for mips data
-    };
-
-    struct CLUT {
-        Color16 color[16];
-    };
 
     struct Room {
 
@@ -1309,8 +1826,8 @@ namespace TR {
             };
             uint16 value;
         } flags;
-        uint16  reverbType;
         uint8   waterScheme;
+        uint8   reverbType;
         uint8   filter;
         uint8   align;
         int32   waterLevel[2]; // water level for normal and flipped level state
@@ -1353,10 +1870,19 @@ namespace TR {
         } *sectors;
 
         struct Light {
+
+            enum Type {
+                DIRECT, POINT, SPOT, SHADOW, FOG
+            };
+
             int32   x, y, z;
             uint32  radius;
             int32   intensity;
-            Color32 color;
+            Color24 color;
+            float   in, out;
+            float   length, cutoff;
+            vec3    dir;
+            uint8   type;
         } *lights;
 
         struct Mesh {
@@ -1366,6 +1892,10 @@ namespace TR {
             Color32 color;
             uint32  meshIndex; // index into static meshes array
         } *meshes;
+
+        bool contains(const vec3 &p) const {
+            return p.x >= info.x && p.x <= info.x + xSectors * 1024 && p.z >= info.z && p.z <= info.z + zSectors * 1024 && p.y >= info.yTop && p.y <= info.yBottom;
+        }
 
         vec3 getOffset() const {
             return vec3(float(info.x), 0.0f, float(info.z));
@@ -1440,8 +1970,9 @@ namespace TR {
 
                 int D = (SQR(dx) + SQR(dy) + SQR(dz)) >> 12;
                 int R = SQR(light.radius >> 1) >> 12;
+                int M = max(1, D + R); // TODO TR4
 
-                int value = min(0x1FFF, (light.intensity * R) / (D + R) + ambientInv);
+                int value = min(0x1FFF, (light.intensity * R) / M + ambientInv);
 
                 if (maxValue < value) {
                     if (nearLight) {
@@ -1559,7 +2090,10 @@ namespace TR {
         int32   x, y, z;
         angle   rotation;
         int16   intensity;
-        int16   intensity2;
+        union {
+            int16 intensity2;
+            int16 OCB;
+        };
         union Flags {
             struct { 
                 uint16 state:2, unused:3, smooth:1, :1, invisible:1, once:1, active:5, reverse:1, rendered:1;
@@ -1580,8 +2114,12 @@ namespace TR {
             if (version & VER_TR3)
                 type = Type(type + TR3_TYPES_START);
 
-            #define REMAP_2(TYPE) case _##TYPE  : return TYPE
-            #define REMAP_3(TYPE) case __##TYPE : return TYPE
+            if (version & VER_TR4)
+                type = Type(type + TR4_TYPES_START);
+
+            #define REMAP_2(TYPE) case _##TYPE   : return TYPE
+            #define REMAP_3(TYPE) case __##TYPE  : return TYPE
+            #define REMAP_4(TYPE) case ___##TYPE : return TYPE
 
             switch (type) {
             // TR2
@@ -1831,6 +2369,38 @@ namespace TR {
                 REMAP_3( SOUND_DOOR_BELL      );
                 REMAP_3( ENEMY_WINSTON        );
                 REMAP_3( EARTHQUAKE           );
+            // TR4
+                REMAP_4( LARA                 );
+                REMAP_4( LARA_PISTOLS         );
+                REMAP_4( LARA_UZIS            );
+                REMAP_4( LARA_SHOTGUN         );
+                REMAP_4( LARA_GRENADE         );
+                REMAP_4( LARA_FLARE           );
+                REMAP_4( LARA_SKIN            );
+                REMAP_4( LARA_BRAID           );
+                REMAP_4( FLAME                );
+                REMAP_4( TRAP_FLAME_EMITTER   );
+                REMAP_4( TRIPWIRE             );
+                REMAP_4( BLOCK_1              );
+                REMAP_4( BLOCK_2              );
+                REMAP_4( BLOCK_3              );
+                REMAP_4( BLOCK_4              );
+                REMAP_4( GRENADE              );
+                REMAP_4( INV_MEDIKIT_BIG      );
+                REMAP_4( INV_MEDIKIT_SMALL    );
+                REMAP_4( FLARES               );
+                REMAP_4( INV_FLARES           );
+                REMAP_4( INV_PASSPORT         );
+                REMAP_4( INV_COMPASS          );
+                REMAP_4( EARTHQUAKE           );
+                REMAP_4( MUZZLE_FLASH         );
+                REMAP_4( AI_GUARD             );
+                REMAP_4( AI_AMBUSH            );
+                REMAP_4( AI_MODIFY            );
+                REMAP_4( AI_FOLLOW            );
+                REMAP_4( KILL_ALL_TRIGGERS    );
+                //REMAP_4( GLYPHS               );
+                REMAP_4( MISC_SPRITES         );
 
                 default : return type;
             }
@@ -1939,7 +2509,7 @@ namespace TR {
         }
 
         bool isBlock() const {
-            return type >= BLOCK_1 && type <= BLOCK_4;
+            return type == BLOCK_1 || type == BLOCK_2 || type == BLOCK_3 || type == BLOCK_4 || type == BLOCK_5;
         }
 
         bool isLara() const {
@@ -2057,6 +2627,9 @@ namespace TR {
         fixed   speed;
         fixed   accel;
 
+        fixed   speedLateral;
+        fixed   accelLateral;
+
         uint16  frameStart;
         uint16  frameEnd;
         uint16  nextAnimation;
@@ -2094,7 +2667,7 @@ namespace TR {
         short3  pos;
         uint16  angles[1];  // angle frames in YXZ order, first angle must be skipped in TR1
 
-        #define ANGLE_SCALE (2.0f * PI / 1024.0f)
+        #define ANGLE_SCALE (PI2 / 1024.0f)
 
         vec3 unpack(uint16 a, uint16 b) {
             return vec3(float((a & 0x3FF0) >> 4), float( ((a & 0x000F) << 6) | ((b & 0xFC00) >> 10)), float(b & 0x03FF)) * ANGLE_SCALE;
@@ -2107,21 +2680,26 @@ namespace TR {
                 index = joint * 2 + 1;
                 uint16 b = angles[index++];
                 uint16 a = angles[index++];
-                if (version & VER_SAT)
+                if (version & VER_SAT) {
                     swap(a, b);
+                }
                 return unpack(a, b);
-            }
-
-            if (version & (VER_TR2 | VER_TR3)) {
-
-                // TODO: remove this !!!
-                for (int i = 0; i < joint; i++)
-                    if (!(angles[index++] & 0xC000))
+            } else {
+                // TODO: optimize this !!!
+                for (int i = 0; i < joint; i++) {
+                    if (!(angles[index++] & 0xC000)) {
                         index++;
+                    }
+                }
 
                 uint16 a = angles[index++];
 
-                float rot = float(a & 0x03FF) * ANGLE_SCALE;
+                float rot;
+                if (((version & VER_VERSION) >= VER_TR4)) {
+                    rot = float(a & 0x0FFF) * (PI2 / 4096.0f);
+                } else {
+                    rot = float(a & 0x03FF) * (PI2 / 1024.0f);
+                }
 
                 switch (a & 0xC000) {
                     case 0x4000 : return vec3(rot, 0, 0);
@@ -2199,11 +2777,33 @@ namespace TR {
         } flags;
     };
 
+    struct FlybyCamera {
+        int32   x, y, z;
+        int32   dx, dy, dz;
+        uint8   sequence;
+        uint8   index;
+        uint16  fov;
+        int16   roll;
+        uint16  timer;
+        uint16  speed;
+        uint16  flags;
+        uint32  room;
+    };
+
     struct CameraFrame {
         short3  target;
         short3  pos;
         int16   fov;
         int16   roll;
+    };
+
+    struct AIObject {
+        uint16 type;
+        uint16 room;
+        int32  x, y, z;
+        uint16 OCB;
+        uint16 flags;
+        int32  angle;
     };
 
     struct SoundSource {
@@ -2280,8 +2880,6 @@ namespace TR {
 
         int32           tilesCount;
 
-        uint32          unused;
-
         uint16          roomsCount;
         Room            *rooms;
 
@@ -2353,6 +2951,9 @@ namespace TR {
         int32           camerasCount;
         Camera          *cameras;
 
+        int32           flybyCamerasCount;
+        FlybyCamera     *flybyCameras;
+
         int32           soundSourcesCount;
         SoundSource     *soundSources;
 
@@ -2369,6 +2970,7 @@ namespace TR {
         int32           entitiesCount;
         Entity          *entities;
 
+        uint8           lightmap[32 * 256]; // color indices table for 32 shades
         Color24         *palette;
         Color32         *palette32;
 
@@ -2379,9 +2981,15 @@ namespace TR {
         Tile4           *tiles4;
         Tile8           *tiles8;
         Tile16          *tiles16;
+        Tile32          *tiles32;
+        Tile32          *tilesMisc;
+
 
         uint16          cameraFramesCount;
         CameraFrame     *cameraFrames;
+
+        AIObject        *AIObjects;
+        uint32          AIObjectsCount;
 
         uint16          demoDataSize;
         uint8           *demoData;
@@ -2391,6 +2999,7 @@ namespace TR {
         int32           soundsInfoCount;
         SoundInfo       *soundsInfo;
 
+        int32           soundsCount;
         int32           soundDataSize;
         uint8           *soundData;
 
@@ -2494,6 +3103,7 @@ namespace TR {
             int16 braid;
             int16 laraSpec;
             int16 laraSkin;
+            int16 laraJoints;
             int16 meshSwap[3];
             int16 sky;
             int16 smoke;
@@ -2548,10 +3158,10 @@ namespace TR {
 
         Level(Stream &stream) {
             memset(this, 0, sizeof(*this));
-            version  = VER_UNKNOWN;
-            cutEntity = -1;
+            version     = VER_UNKNOWN;
+            cutEntity   = -1;
+            meshesCount = 0;
 
-            int startPos = stream.pos;
             uint32 magic;
 
             #define MAGIC_TR1_PC  0x00000020
@@ -2562,87 +3172,34 @@ namespace TR {
             #define MAGIC_TR3_PC2 0xFF180038
             #define MAGIC_TR3_PC3 0xFF180034
             #define MAGIC_TR3_PSX 0xFFFFFFC8
+            #define MAGIC_TR4_PC  0x00345254
 
             id = TR::getLevelID(stream.size, stream.name, version, isDemoLevel);
 
-            if (version == VER_UNKNOWN || version == VER_TR1_PSX) {
+            if (version == VER_UNKNOWN || version == VER_TR1_PSX || version == VER_TR1_SAT || version == VER_TR3_PSX) {
                 stream.read(magic);
-                if (magic == MAGIC_TR1_SAT) {
-                    version = VER_TR1_SAT;
 
-                    stream.seek(-4);
-                // get file name without extension
-                    size_t len = strlen(stream.name);
-                    char *name = new char[len + 1];
-                    memcpy(name, stream.name, len);
-                    for (int i = int(len) - 1; i >= 0; i--) {
-                        if (name[i] == '/' || name[i] == '\\')
-                            break;
-                        if (name[i] == '.') {
-                            len = i;
-                            break;
-                        }
-                    }
-                    name[len] = 0;
-                    LOG("load Sega Saturn level: %s\n", name);
-
-                    strcat(name, ".SAD");
-                    Stream sad(name);
-                    name[len] = '\0';
-                    strcat(name, ".SPR");
-                    Stream spr(name);
-                    name[len] = '\0';
-                    strcat(name, ".SND");
-                    Stream snd(name);
-                    name[len] = '\0';
-                    strcat(name, ".CIN");
-
-                    Stream *cin = NULL;
-                    if (Stream::existsContent(name)) {
-                        cin = new Stream(name);
-                    } else {
-                        len = strlen(name);
-                        for (int i = int(len) - 1; i >= 0; i--)
-                            if (name[i] == '/' || name[i] == '\\') {
-                                char *newName = new char[len + 11 + 1];
-                                name[i] = 0;
-                                strcpy(newName, name);
-                                strcat(newName, "/../CINDATA/");
-                                strcat(newName, name + i + 1);
-                                delete[] name;
-                                name = newName;
-                                break;
-                            }
-
-                        if (Stream::existsContent(name))
-                            cin = new Stream(name);
-                    }
-
-                    delete[] name;
-
-                    readSAT(sad);
-                    readSAT(spr);
-                    readSAT(snd);
-                    if (cin) {
-                        readCIN(*cin);
-                        delete cin;
-                    }
-                    readSAT(stream); // sat
-                    return;
-                }
-
-                if (magic != MAGIC_TR1_PC && magic != MAGIC_TR2_PC && magic != MAGIC_TR3_PC1 && magic != MAGIC_TR3_PC2 && magic != MAGIC_TR3_PC3 && magic != MAGIC_TR3_PSX) {
+                if (magic != MAGIC_TR1_PC  &&
+                    magic != MAGIC_TR1_SAT &&
+                    magic != MAGIC_TR2_PC  &&
+                    magic != MAGIC_TR3_PC1 &&
+                    magic != MAGIC_TR3_PC2 &&
+                    magic != MAGIC_TR3_PC3 &&
+                    magic != MAGIC_TR3_PSX &&
+                    magic != MAGIC_TR4_PC) {
                     stream.read(magic);
                 }
 
                 switch (magic) {
                     case MAGIC_TR1_PC  : version = VER_TR1_PC;  break;
                     case MAGIC_TR1_PSX : version = VER_TR1_PSX; break;
+                    case MAGIC_TR1_SAT : version = VER_TR1_SAT; break;
                     case MAGIC_TR2_PC  : version = VER_TR2_PC;  break;
                     case MAGIC_TR3_PC1 :
                     case MAGIC_TR3_PC2 : 
                     case MAGIC_TR3_PC3 : version = VER_TR3_PC;  break;
                     case MAGIC_TR3_PSX : version = VER_TR3_PSX; break;
+                    case MAGIC_TR4_PC  : version = VER_TR4_PC;  break;
                     default            : ;
                 }
             }
@@ -2653,291 +3210,21 @@ namespace TR {
                 return;
             }
 
-            if (version == VER_TR2_PSX) {
-                stream.read(soundOffsets, stream.read(soundOffsetsCount) + 1);
-                soundSize = new uint32[soundOffsetsCount];
-                soundDataSize = 0;
-                for (int i = 0; i < soundOffsetsCount; i++) {
-                    ASSERT(soundOffsets[i] < soundOffsets[i + 1]);
-                    soundSize[i]    = soundOffsets[i + 1] - soundOffsets[i];
-                    soundOffsets[i] = soundDataSize;
-                    soundDataSize  += soundSize[i];
-                }
-                stream.read(soundData, soundDataSize);
-            }
-
-            if (version == VER_TR3_PSX) {
-                stream.read(soundOffsets, stream.read(soundOffsetsCount));
-                if (soundOffsetsCount) {
-                    stream.read(soundDataSize);
-                    stream.read(soundData, soundDataSize);
-                    soundSize = new uint32[soundOffsetsCount];
-                    int size = 0;
-                    for (int i = 0; i < soundOffsetsCount - 1; i++) {
-                        ASSERT(soundOffsets[i] < soundOffsets[i + 1]);
-                        size += soundSize[i] = soundOffsets[i + 1] - soundOffsets[i];
-                    }
-
-                    if (soundOffsetsCount) {
-                        soundSize[soundOffsetsCount - 1] = soundDataSize;
-                        if (soundOffsetsCount > 1)
-                            soundSize[soundOffsetsCount - 1] -= soundSize[soundOffsetsCount - 2];
-                    }
-                }
-
-            // skip code modules
-                int size;
-                for (int i = 0; i < 13; i++) {
-                    stream.read(size);
-                    if (size) {
-                        stream.seek(size);
-                        stream.read(size);
-                        stream.seek(size);
-                    }
-                }
-            }
-
-            if (version == VER_TR2_PC || version == VER_TR3_PC) {
-                stream.read(palette,   256);
-                stream.read(palette32, 256);
-            }
-
-            if (version == VER_TR1_PSX && !isCutsceneLevel()) {
-                uint32 offsetTexTiles;
-                stream.seek(8);
-                stream.read(offsetTexTiles);
-            // sound offsets
-                uint16 numSounds;
-                stream.setPos(startPos + 22);
-                stream.read(numSounds);
-                stream.setPos(startPos + 2086 + numSounds * 512);
-                soundOffsetsCount = numSounds;
-                soundOffsets = new uint32[soundOffsetsCount];
-                soundSize    = new uint32[soundOffsetsCount];
-                soundDataSize = 0;
-                for (int i = 0; i < soundOffsetsCount; i++) {
-                    soundOffsets[i] = soundDataSize;
-                    uint16 size;
-                    stream.read(size);
-                    soundDataSize += soundSize[i] = size * 8;
-                }           
-            // sound data
-                stream.setPos(startPos + 2600 + numSounds * 512);
-                stream.read(soundData, soundDataSize);
-                stream.setPos(startPos + offsetTexTiles + 8);
-            }
-
-            // tiles
-            if (version & VER_PC) {
-                stream.read(tiles8, stream.read(tilesCount));
-            }
-
-            if (version == VER_TR2_PC || version == VER_TR3_PC) 
-                stream.read(tiles16, tilesCount);
-
-            if (version == VER_TR1_PSX) {
-                stream.read(tiles4, tilesCount = 13);
-                stream.read(cluts,  clutsCount = 1024);
-            }
-
-            if (version != VER_TR3_PSX)
-                stream.read(unused);
-
-        // rooms
-            rooms = stream.read(roomsCount) ? new Room[roomsCount] : NULL;
-            for (int i = 0; i < roomsCount; i++) 
-                readRoom(stream, i);
-
-        // floors
-            stream.read(floors, stream.read(floorsCount));
-
-            if (version == VER_TR3_PSX) {
-                // outside room offsets
-                stream.seek(27 * 27 * 2);
-                // outside rooms table
-                int size;
-                stream.read(size);
-                stream.seek(size);
-                // room mesh bbox
-                stream.read(size);
-                stream.seek(8 * size);
-            }
-
-        // meshes
-            meshesCount = 0;
-            stream.read(meshData,    stream.read(meshDataSize));
-            stream.read(meshOffsets, stream.read(meshOffsetsCount));
-        // animations
-
-            stream.read(anims,     stream.read(animsCount));
-            stream.read(states,    stream.read(statesCount));
-            stream.read(ranges,    stream.read(rangesCount));
-            stream.read(commands,  stream.read(commandsCount));
-            stream.read(nodesData, stream.read(nodesDataSize));
-            stream.read(frameData, stream.read(frameDataSize));
-        // models
-            models = stream.read(modelsCount) ? new Model[modelsCount] : NULL;
-            for (int i = 0; i < modelsCount; i++) {
-                Model &m = models[i];
-                uint16 type;
-                m.type = Entity::Type(stream.read(type));
-                stream.seek(sizeof(m.index));
-                m.index = i;
-                stream.read(m.mCount);
-                stream.read(m.mStart);
-                stream.read(m.node);
-                stream.read(m.frame);
-                stream.read(m.animation);
-                if (version & VER_PSX)
-                    stream.seek(2);
-            }
-            stream.read(staticMeshes, stream.read(staticMeshesCount));
-
-            if (version == VER_TR2_PSX || version == VER_TR3_PSX) {
-                stream.read(tiles4, stream.read(tilesCount));
-                stream.read(clutsCount);
-                if (clutsCount > 1024) { // check for japanese version (read kanji CLUT index)
-                    kanjiSprite = clutsCount & 0xFFFF;
-                    stream.seek(-2);
-                    stream.read(clutsCount);
-                }
-                if (version == VER_TR3_PSX)
-                    clutsCount *= 2; // read underwater cluts too
-                stream.read(cluts, clutsCount);
-                if (version != VER_TR3_PSX)
-                    stream.seek(4);
-            }
-
-        // textures & UV
-            if (version != VER_TR3_PC)
-                readObjectTex(stream);
-            readSpriteTex(stream);
-        // palette for demo levels
-            if (version == VER_TR1_PC && isDemoLevel) stream.read(palette, 256);
-        // cameras
-            stream.read(cameras,        stream.read(camerasCount));
-        // sound sources
-            stream.read(soundSources,   stream.read(soundSourcesCount));
-        // AI
-            boxes = stream.read(boxesCount) ? new Box[boxesCount] : NULL;
-            for (int i = 0; i < boxesCount; i++) {
-                Box &b = boxes[i];
-                if (version & VER_TR1) {
-                    stream.read(b.minZ);
-                    stream.read(b.maxZ);
-                    stream.read(b.minX);
-                    stream.read(b.maxX);
-                }
-                
-                if (version & (VER_TR2 | VER_TR3)) {
-                    uint8 value;
-                    b.minZ = stream.read(value) * 1024;
-                    b.maxZ = stream.read(value) * 1024;
-                    b.minX = stream.read(value) * 1024;
-                    b.maxX = stream.read(value) * 1024;
-                }
-
-                stream.read(b.floor);
-                stream.read(b.overlap.value);
-            }
-
-            stream.read(overlaps, stream.read(overlapsCount));
-            for (int i = 0; i < 2; i++) {
-                stream.read(zones[i].ground1, boxesCount);
-                stream.read(zones[i].ground2, boxesCount);
-                if (!(version & VER_TR1)) {
-                    stream.read(zones[i].ground3, boxesCount);
-                    stream.read(zones[i].ground4, boxesCount);
-                } else {
-                    zones[i].ground3 = NULL;
-                    zones[i].ground4 = NULL;
-                }
-                stream.read(zones[i].fly, boxesCount);
-            }
-
-        // animated textures
-            readAnimTex(stream);
-
-            if (version == VER_TR3_PC)
-                readObjectTex(stream);
-
-        // entities (enemies, items, lara etc.)
-            readEntities(stream);
-
-            if (version & VER_PC) {
-                stream.seek(32 * 256);
-            // palette for release levels
-                if ((version == VER_TR1_PC) && !isDemoLevel) 
-                    stream.read(palette, 256);
-            // cinematic frames for cameras (PC)
-                stream.read(cameraFrames,   stream.read(cameraFramesCount));
-            // demo data
-                stream.read(demoData,       stream.read(demoDataSize));
-            }
-
-            if (version == VER_TR2_PSX)
-                stream.seek(4);
-
-            if (version == VER_TR3_PSX) {
-                stream.read(skyColor);
-
-                roomTexturesCount = stream.readLE32();
-
-                if (roomTexturesCount) {
-                    roomTextures = new TextureInfo[roomTexturesCount];
-
-                // load room textures
-                    for (int i = 0; i < roomTexturesCount; i++) {
-                        readObjectTex(stream, roomTextures[i], TEX_TYPE_ROOM);
-                        stream.seek(2 * 16); // skip 2 mipmap levels
-                    }
-                }
-            }
-
-        // sounds
-            stream.read(soundsMap, (version & VER_TR1) ? 256 : 370);
-            soundsInfo = stream.read(soundsInfoCount) ? new SoundInfo[soundsInfoCount] : NULL;
-            for (int i = 0; i < soundsInfoCount; i++) {
-                SoundInfo &s = soundsInfo[i];
-
-                stream.read(s.index);
-                if (version & (VER_TR1 | VER_TR2)) {
-                    uint16 v;
-                    stream.read(v); s.volume = float(v) / 0x7FFF;
-                    stream.read(v); s.chance = float(v) / 0xFFFF;
-                    s.range = 8 * 1024;
-                    s.pitch = 0.2f;
-                } else {
-                    uint8 v;
-                    stream.read(v); s.volume = float(v) / 0xFF;
-                    stream.read(v); s.range  = float(v) * 1024;
-                    stream.read(v); s.chance = float(v) / 0xFF;
-                    stream.read(v); s.pitch  = float(v) / 0xFF;
-                }
-
-                stream.read(s.flags.value);
-
-                ASSERT(s.volume <= 1.0f);
-            }
-
-            if (version == VER_TR3_PSX)
-                stream.seek(4);
-
-            if (version == VER_TR1_PC) {
-                stream.read(soundData,    stream.read(soundDataSize));
-                stream.read(soundOffsets, stream.read(soundOffsetsCount));
-            }
-
-            if (version == VER_TR2_PC || version == VER_TR3_PC) {
-                stream.read(soundOffsets, stream.read(soundOffsetsCount));
-                new Stream(getGameSoundsFile(version), sfxLoadAsync, this);
-            }
-
-        // cinematic frames for cameras (PSX)
-            if (version & VER_PSX) {
-                if (version != VER_TR3_PSX)
-                    stream.seek(4);
-                stream.read(cameraFrames, stream.read(cameraFramesCount));
+            switch (version) {
+                case VER_TR1_PC   : loadTR1_PC  (stream); break;
+                case VER_TR1_PSX  : loadTR1_PSX (stream); break;
+                case VER_TR1_SAT  : loadTR1_SAT (stream); break;
+                case VER_TR2_PC   : loadTR2_PC  (stream); break;
+                case VER_TR2_PSX  : loadTR2_PSX (stream); break;
+                case VER_TR3_PC   : loadTR3_PC  (stream); break;
+                case VER_TR3_PSX  : loadTR3_PSX (stream); break;
+                case VER_TR4_PC   : loadTR4_PC  (stream); break;
+                case VER_TR4_PSX  : loadTR4_PSX (stream); break;
+                case VER_TR4_SDC  : loadTR4_SDC (stream); break;
+                case VER_TR5_PC   : loadTR5_PC  (stream); break;
+                case VER_TR5_PSX  : loadTR5_PSX (stream); break;
+                case VER_TR5_SDC  : loadTR5_SDC (stream); break;
+                default           : ASSERT(false);
             }
 
             prepare();
@@ -2976,6 +3263,7 @@ namespace TR {
             delete[] spriteSequences;
             delete[] spriteTexturesData;
             delete[] cameras;
+            delete[] flybyCameras;
             delete[] soundSources;
             delete[] boxes;
             delete[] overlaps;
@@ -2996,7 +3284,10 @@ namespace TR {
             delete[] tiles4;
             delete[] tiles8;
             delete[] tiles16;
+            delete[] tiles32;
+            delete[] tilesMisc;
             delete[] cameraFrames;
+            delete[] AIObjects;
             delete[] demoData;
             delete[] soundsMap;
             delete[] soundsInfo;
@@ -3005,6 +3296,599 @@ namespace TR {
             delete[] soundSize;
 
             delete[] tsub;
+        }
+
+        void loadTR1_PC (Stream &stream) {
+            stream.read(tiles8, stream.read(tilesCount));
+
+            readDataArrays(stream);
+            readObjectTex(stream);
+            readSpriteTex(stream);
+
+            if (isDemoLevel) {
+                stream.read(palette, 256);
+            }
+
+            readCameras(stream);
+            readSoundSources(stream);
+            readBoxes(stream);
+            readOverlaps(stream);
+            readZones(stream);
+            readAnimTex(stream);
+            readEntities(stream);
+            readLightMap(stream);
+            
+            if (!isDemoLevel) {
+                stream.read(palette, 256);
+            }
+
+            readCameraFrames(stream);
+            readDemoData(stream);
+            readSoundMap(stream);
+            readSoundData(stream);
+            readSoundOffsets(stream);
+        }
+
+        void loadTR1_PSX (Stream &stream) {
+            if (!isCutsceneLevel()) {
+                uint32 offsetTexTiles;
+                stream.seek(8);
+                stream.read(offsetTexTiles);
+            // sound offsets
+                uint16 numSounds;
+                stream.setPos(22);
+                stream.read(numSounds);
+                stream.setPos(2086 + numSounds * 512);
+                soundOffsetsCount = numSounds;
+                soundOffsets = new uint32[soundOffsetsCount];
+                soundSize    = new uint32[soundOffsetsCount];
+                soundDataSize = 0;
+                for (int i = 0; i < soundOffsetsCount; i++) {
+                    soundOffsets[i] = soundDataSize;
+                    uint16 size;
+                    stream.read(size);
+                    soundDataSize += soundSize[i] = size * 8;
+                }           
+            // sound data
+                stream.setPos(2600 + numSounds * 512);
+                stream.read(soundData, soundDataSize);
+                stream.setPos(offsetTexTiles + 8);
+            }
+
+            stream.read(tiles4, tilesCount = 13);
+            stream.read(cluts,  clutsCount = 1024);
+
+            readDataArrays(stream);
+            readObjectTex(stream);
+            readSpriteTex(stream);
+            readCameras(stream);
+            readSoundSources(stream);
+            readBoxes(stream);
+            readOverlaps(stream);
+            readZones(stream);
+            readAnimTex(stream);
+            readEntities(stream);
+            readSoundMap(stream);
+            stream.seek(4);
+            readCameraFrames(stream);
+        }
+
+        void loadTR1_SAT (Stream &stream) {
+            stream.seek(-4); // no magic header
+
+        // get file name without extension
+            size_t len = strlen(stream.name);
+            char *name = new char[len + 1];
+            memcpy(name, stream.name, len);
+            for (int i = int(len) - 1; i >= 0; i--) {
+                if (name[i] == '/' || name[i] == '\\')
+                    break;
+                if (name[i] == '.') {
+                    len = i;
+                    break;
+                }
+            }
+            name[len] = 0;
+
+            LOG("load Sega Saturn level: %s\n", name);
+
+            strcat(name, ".SAD");
+            Stream sad(name);
+            name[len] = '\0';
+            strcat(name, ".SPR");
+            Stream spr(name);
+            name[len] = '\0';
+            strcat(name, ".SND");
+            Stream snd(name);
+            name[len] = '\0';
+            strcat(name, ".CIN");
+
+            Stream *cin = NULL;
+            if (Stream::existsContent(name)) {
+                cin = new Stream(name);
+            } else {
+                len = strlen(name);
+                for (int i = int(len) - 1; i >= 0; i--)
+                    if (name[i] == '/' || name[i] == '\\') {
+                        char *newName = new char[len + 11 + 1];
+                        name[i] = 0;
+                        strcpy(newName, name);
+                        strcat(newName, "/../CINDATA/");
+                        strcat(newName, name + i + 1);
+                        delete[] name;
+                        name = newName;
+                        break;
+                    }
+
+                if (Stream::existsContent(name))
+                    cin = new Stream(name);
+            }
+
+            delete[] name;
+
+            readSAT(sad);
+            readSAT(spr);
+            readSAT(snd);
+            if (cin) {
+                readCIN(*cin);
+                delete cin;
+            }
+            readSAT(stream); // sat
+        }
+
+        void loadTR2_PC (Stream &stream) {
+            stream.read(palette,   256);
+            stream.read(palette32, 256);
+            stream.read(tiles8, stream.read(tilesCount));
+            stream.read(tiles16, tilesCount);
+
+            readDataArrays(stream);
+            readObjectTex(stream);
+            readSpriteTex(stream);
+            readCameras(stream);
+            readSoundSources(stream);
+            readBoxes(stream);
+            readOverlaps(stream);
+            readZones(stream);
+            readAnimTex(stream);
+            readEntities(stream);
+            readLightMap(stream);
+            readCameraFrames(stream);
+            readDemoData(stream);
+            readSoundMap(stream);
+            readSoundOffsets(stream);
+
+            new Stream(getGameSoundsFile(version), sfxLoadAsync, this);
+        }
+
+        void loadTR2_PSX (Stream &stream) {
+            stream.read(soundOffsets, stream.read(soundOffsetsCount) + 1);
+            soundSize = new uint32[soundOffsetsCount];
+            soundDataSize = 0;
+            for (int i = 0; i < soundOffsetsCount; i++) {
+                ASSERT(soundOffsets[i] < soundOffsets[i + 1]);
+                soundSize[i]    = soundOffsets[i + 1] - soundOffsets[i];
+                soundOffsets[i] = soundDataSize;
+                soundDataSize  += soundSize[i];
+            }
+            stream.read(soundData, soundDataSize);
+
+            readDataArrays(stream);
+
+            stream.read(tiles4, stream.read(tilesCount));
+            stream.read(clutsCount);
+            if (clutsCount > 1024) { // check for japanese version (read kanji CLUT index)
+                kanjiSprite = clutsCount & 0xFFFF;
+                stream.seek(-2);
+                stream.read(clutsCount);
+            }
+            stream.read(cluts, clutsCount);
+            stream.seek(4);
+            readObjectTex(stream);
+            readSpriteTex(stream);
+            readCameras(stream);
+            readSoundSources(stream);
+            readBoxes(stream);
+            readOverlaps(stream);
+            readZones(stream);
+            readAnimTex(stream);
+            readEntities(stream);
+            stream.seek(4);
+            readSoundMap(stream);
+            stream.seek(4);
+            readCameraFrames(stream);
+        }
+
+        void loadTR3_PC (Stream &stream) {
+            stream.read(palette,   256);
+            stream.read(palette32, 256);
+            stream.read(tiles8, stream.read(tilesCount));
+            stream.read(tiles16, tilesCount);
+
+            readDataArrays(stream);
+            readSpriteTex(stream);
+            readCameras(stream);
+            readSoundSources(stream);
+            readBoxes(stream);
+            readOverlaps(stream);
+            readZones(stream);
+            readAnimTex(stream);
+            readObjectTex(stream);
+            readEntities(stream);
+            readLightMap(stream);
+            readCameraFrames(stream);
+            readDemoData(stream);
+            readSoundMap(stream);
+            readSoundOffsets(stream);
+            new Stream(getGameSoundsFile(version), sfxLoadAsync, this);
+        }
+
+        void loadTR3_PSX (Stream &stream) {
+            readSoundOffsets(stream);
+            if (soundOffsetsCount) {
+                readSoundData(stream);
+                soundSize = new uint32[soundOffsetsCount];
+                int size = 0;
+                for (int i = 0; i < soundOffsetsCount - 1; i++) {
+                    ASSERT(soundOffsets[i] < soundOffsets[i + 1]);
+                    size += soundSize[i] = soundOffsets[i + 1] - soundOffsets[i];
+                }
+
+                if (soundOffsetsCount) {
+                    soundSize[soundOffsetsCount - 1] = soundDataSize;
+                    if (soundOffsetsCount > 1) {
+                        soundSize[soundOffsetsCount - 1] -= soundSize[soundOffsetsCount - 2];
+                    }
+                }
+            }
+
+        // skip code modules
+            int size;
+            for (int i = 0; i < 13; i++) {
+                stream.read(size);
+                if (size) {
+                    stream.seek(size);
+                    stream.read(size);
+                    stream.seek(size);
+                }
+            }
+
+            readDataArrays(stream);
+
+            stream.read(tiles4, stream.read(tilesCount));
+            stream.read(clutsCount);
+            if (clutsCount > 1024) { // check for japanese version (read kanji CLUT index)
+                kanjiSprite = clutsCount & 0xFFFF;
+                stream.seek(-2);
+                stream.read(clutsCount);
+            }
+            clutsCount *= 2; // read underwater cluts too
+            stream.read(cluts, clutsCount);
+
+            readObjectTex(stream);
+            readSpriteTex(stream);
+            readCameras(stream);
+            readSoundSources(stream);
+            readBoxes(stream);
+            readOverlaps(stream);
+            readZones(stream);
+            readAnimTex(stream);
+            readEntities(stream);
+
+            stream.read(skyColor);
+
+            roomTexturesCount = stream.readLE32();
+
+            if (roomTexturesCount) {
+                roomTextures = new TextureInfo[roomTexturesCount];
+
+            // load room textures
+                for (int i = 0; i < roomTexturesCount; i++) {
+                    readObjectTex(stream, roomTextures[i], TEX_TYPE_ROOM);
+                    stream.seek(2 * 16); // skip 2 mipmap levels
+                }
+            }
+
+            readSoundMap(stream);
+            stream.seek(4);
+            readCameraFrames(stream);
+        }
+
+        void loadTR4_PC (Stream &stream) {
+            uint16 roomTilesCount, objTilesCount, bumpTilesCount;
+            uint32 sizeD, sizeC, sizeR;
+            uint8  *dataC, *dataD;
+
+            stream.read(roomTilesCount);
+            stream.read(objTilesCount);
+            stream.read(bumpTilesCount);
+
+        // tiles32
+            stream.read(sizeD);
+            stream.read(dataC, stream.read(sizeC));
+            ASSERT(sizeD == sizeof(Tile32) * (roomTilesCount + objTilesCount + bumpTilesCount));
+            tiles32 = new Tile32[roomTilesCount + objTilesCount + bumpTilesCount];
+            tinf_uncompress(tiles32, &sizeR, dataC + 2, 0);
+            ASSERT(sizeD == sizeR);
+            delete[] dataC;
+
+        // tiles16
+            stream.read(sizeD);
+            stream.read(sizeC);
+            stream.seek(sizeC); // skip compressed 16-bit tiles
+
+        // tiles16
+            stream.read(sizeD);
+            stream.read(dataC, stream.read(sizeC));
+            ASSERT(sizeD == sizeof(Tile32) * 2);
+            tilesMisc = new Tile32[2];
+            tinf_uncompress(tilesMisc, &sizeR, dataC + 2, 0);
+            ASSERT(sizeD == sizeR);
+            delete[] dataC;
+
+            stream.read(sizeD);
+            stream.read(dataC, stream.read(sizeC));
+            dataD = new uint8[sizeD];
+            tinf_uncompress(dataD, &sizeR, dataC + 2, 0);
+            ASSERT(sizeD == sizeR);
+            delete[] dataC;
+
+            {
+                Stream stream(NULL, dataD, sizeD);
+                readDataArrays(stream);
+                stream.seek(3); // SPR
+                readSpriteTex(stream);
+                readCameras(stream);
+                readFlybyCameras(stream);
+                readSoundSources(stream);
+                readBoxes(stream);
+                readOverlaps(stream);
+                readZones(stream);
+                readAnimTex(stream);
+                stream.seek(3); // TEX
+                readObjectTex(stream);
+                readEntities(stream);
+                readAIObjects(stream);
+                readDemoData(stream);
+                readSoundMap(stream);
+                readSoundOffsets(stream);
+            }
+            delete[] dataD;
+
+            stream.read(soundsCount);
+            if (soundOffsetsCount <= 0 && soundsCount > 0) {
+                soundOffsetsCount = soundsCount;
+                soundOffsets = new uint32[soundOffsetsCount];
+            }
+            soundDataSize = stream.size - stream.pos;
+            soundData = new uint8[soundDataSize];
+            soundDataSize = 0;
+            for (int i = 0; i < soundsCount; i++) {
+                stream.read(sizeD);
+                stream.read(sizeC);
+                soundOffsets[i] = soundDataSize;
+                stream.raw(soundData + soundDataSize, sizeC);
+                soundDataSize += sizeC;
+            }
+        }
+
+        void loadTR4_PSX (Stream &stream) {
+
+        }
+
+        void loadTR4_SDC (Stream &stream) {
+
+        }
+
+        void loadTR5_PC (Stream &stream) {
+
+        }
+
+        void loadTR5_PSX (Stream &stream) {
+
+        }
+
+        void loadTR5_SDC (Stream &stream) {
+
+        }
+
+        void readDataArrays(Stream &stream) {
+            if (version != VER_TR3_PSX) {
+                stream.seek(4);            
+            }
+
+            rooms = stream.read(roomsCount) ? new Room[roomsCount] : NULL;
+            for (int i = 0; i < roomsCount; i++) {
+                readRoom(stream, i);
+            }
+
+            stream.read(floors, stream.read(floorsCount));
+
+            if (version == VER_TR3_PSX) {
+                // outside room offsets
+                stream.seek(27 * 27 * 2);
+                // outside rooms table
+                int size;
+                stream.read(size);
+                stream.seek(size);
+                // room mesh bbox
+                stream.read(size);
+                stream.seek(8 * size);
+            }
+
+            stream.read(meshData,    stream.read(meshDataSize));
+            stream.read(meshOffsets, stream.read(meshOffsetsCount));
+
+            readAnims(stream);
+
+            stream.read(states,      stream.read(statesCount));
+            stream.read(ranges,      stream.read(rangesCount));
+            stream.read(commands,    stream.read(commandsCount));
+            stream.read(nodesData,   stream.read(nodesDataSize));
+            stream.read(frameData,   stream.read(frameDataSize));
+
+            readModels(stream);
+
+            stream.read(staticMeshes, stream.read(staticMeshesCount));
+        }
+
+        void readAnims(Stream &stream) {
+            stream.read(animsCount);
+            anims = animsCount ? new Animation[animsCount] : NULL;
+            for (int i = 0; i < animsCount; i++) {
+                Animation &anim = anims[i];
+                stream.read(anim.frameOffset);
+                stream.read(anim.frameRate);
+                stream.read(anim.frameSize);
+                stream.read(anim.state);
+                stream.read(anim.speed);
+                stream.read(anim.accel);
+                if (version & (VER_TR4 | VER_TR5)) {
+                    stream.read(anim.speedLateral);
+                    stream.read(anim.accelLateral);
+                } else {
+                    anim.speedLateral.value = 0;
+                    anim.accelLateral.value = 0;
+                }
+                stream.read(anim.frameStart);
+                stream.read(anim.frameEnd);
+                stream.read(anim.nextAnimation);
+                stream.read(anim.nextFrame);
+                stream.read(anim.scCount);
+                stream.read(anim.scOffset);
+                stream.read(anim.acCount);
+                stream.read(anim.animCommand);
+            }
+
+        }
+
+        void readModels(Stream &stream) {
+            models = stream.read(modelsCount) ? new Model[modelsCount] : NULL;
+            for (int i = 0; i < modelsCount; i++) {
+                Model &m = models[i];
+                uint16 type;
+                m.type = Entity::Type(stream.read(type));
+                stream.seek(sizeof(m.index));
+                m.index = i;
+                stream.read(m.mCount);
+                stream.read(m.mStart);
+                stream.read(m.node);
+                stream.read(m.frame);
+                stream.read(m.animation);
+                if (version & VER_PSX) {
+                    stream.seek(2);
+                }
+            }
+        }
+
+        void readCameras(Stream &stream) {
+            stream.read(cameras, stream.read(camerasCount));
+        }
+
+        void readFlybyCameras(Stream &stream) {
+            stream.read(flybyCameras, stream.read(flybyCamerasCount));
+        }
+
+        void readSoundSources(Stream &stream) {
+            stream.read(soundSources, stream.read(soundSourcesCount));
+        }
+
+        void readBoxes(Stream &stream) {
+            boxes = stream.read(boxesCount) ? new Box[boxesCount] : NULL;
+            for (int i = 0; i < boxesCount; i++) {
+                Box &b = boxes[i];
+                if (version & VER_TR1) {
+                    stream.read(b.minZ);
+                    stream.read(b.maxZ);
+                    stream.read(b.minX);
+                    stream.read(b.maxX);
+                }
+                
+                if (version & (VER_TR2 | VER_TR3 | VER_TR4 | VER_TR5)) {
+                    uint8 value;
+                    b.minZ = stream.read(value) * 1024;
+                    b.maxZ = stream.read(value) * 1024;
+                    b.minX = stream.read(value) * 1024;
+                    b.maxX = stream.read(value) * 1024;
+                }
+
+                stream.read(b.floor);
+                stream.read(b.overlap.value);
+            }
+        }
+
+        void readOverlaps(Stream &stream) {
+            stream.read(overlaps, stream.read(overlapsCount));
+        }
+
+        void readZones(Stream &stream) {
+            for (int i = 0; i < 2; i++) {
+                stream.read(zones[i].ground1, boxesCount);
+                stream.read(zones[i].ground2, boxesCount);
+                if (!(version & VER_TR1)) {
+                    stream.read(zones[i].ground3, boxesCount);
+                    stream.read(zones[i].ground4, boxesCount);
+                } else {
+                    zones[i].ground3 = NULL;
+                    zones[i].ground4 = NULL;
+                }
+                stream.read(zones[i].fly, boxesCount);
+            }
+        }
+
+        void readLightMap(Stream &stream) {
+            stream.raw(lightmap, 32 * 256);
+            for (int i = 0; i < 32; i++) {
+                lightmap[i * 256] = 0;
+            }
+        }
+
+        void readCameraFrames(Stream &stream) {
+            stream.read(cameraFrames, stream.read(cameraFramesCount));
+        }
+
+        void readAIObjects(Stream &stream) {
+            stream.read(AIObjects, stream.read(AIObjectsCount));
+        }
+
+        void readDemoData(Stream &stream) {
+            stream.read(demoData, stream.read(demoDataSize));
+        }
+
+        void readSoundMap(Stream &stream) {
+            soundsCount = (version & VER_TR1) ? 256 : 370;
+            stream.read(soundsMap, soundsCount);
+            soundsInfo = (stream.read(soundsInfoCount) > 0) ? new SoundInfo[soundsInfoCount] : NULL;
+            for (int i = 0; i < soundsInfoCount; i++) {
+                SoundInfo &s = soundsInfo[i];
+
+                stream.read(s.index);
+                if (version & (VER_TR1 | VER_TR2)) {
+                    uint16 v;
+                    stream.read(v); s.volume = float(v) / 0x7FFF;
+                    stream.read(v); s.chance = float(v) / 0xFFFF;
+                    s.range = 8 * 1024;
+                    s.pitch = 0.2f;
+                } else {
+                    uint8 v;
+                    stream.read(v); s.volume = float(v) / 0xFF;
+                    stream.read(v); s.range  = float(v) * 1024;
+                    stream.read(v); s.chance = float(v) / 0xFF;
+                    stream.read(v); s.pitch  = float(v) / 0xFF;
+                }
+
+                stream.read(s.flags.value);
+
+                ASSERT(s.volume <= 1.0f);
+            }
+        }
+
+        void readSoundData(Stream &stream) {
+            stream.read(soundDataSize) > 0 ? stream.read(soundData, soundDataSize) : NULL;
+        }
+
+        void readSoundOffsets(Stream &stream) {
+            stream.read(soundOffsetsCount) > 0 ? stream.read(soundOffsets, soundOffsetsCount) : NULL;
         }
 
         #define CHUNK(str) ((uint64)((const char*)(str))[0]        | ((uint64)((const char*)(str))[1] << 8)  | ((uint64)((const char*)(str))[2] << 16) | ((uint64)((const char*)(str))[3] << 24) | \
@@ -3153,7 +4037,6 @@ namespace TR {
                                 ASSERT(fIndex < data.fCount);
 
                                 Face &f = data.faces[fIndex++];
-                                f.flags.value = 0;
                                 switch (type) {
                                     case TYPE_SPRITE       : {
                                         Room::Data::Sprite &sprite = data.sprites[data.sCount++];
@@ -3180,7 +4063,6 @@ namespace TR {
                                     case TYPE_R_INVISIBLE  :
                                     case TYPE_R_TRANSP     :
                                     case TYPE_R_SOLID      :
-                                        f.triangle    = false;
                                         f.vertices[0] = (stream.readBE16() >> 4);
                                         f.vertices[1] = (stream.readBE16() >> 4);
                                         f.vertices[2] = (stream.readBE16() >> 4);
@@ -3197,15 +4079,16 @@ namespace TR {
                                         LOG("! unknown face type: %d\n", type);
                                         ASSERT(false);
                                 }
-                                ASSERT(f.flags.value % 16 == 0);
-                                ASSERT(f.flags.value / 16 < roomTexturesCount);
-                                f.flags.value /= 16;
-                                f.water       = false;
-                                f.colored     = false;
-                                f.flip        = false;
 
-                                if (type == TYPE_R_TRANSP)
+                                if (type != TYPE_SPRITE) {
+                                    ASSERT(f.flags.value % 16 == 0);
+                                    ASSERT(f.flags.value / 16 < roomTexturesCount);
+                                    f.flags.value /= 16;
+                                }
+
+                                if (type == TYPE_R_TRANSP) {
                                     roomTextures[f.flags.texture].attribute = 1;
+                                }
                             }
                         }
                         data.fCount = fIndex;
@@ -3302,7 +4185,6 @@ namespace TR {
                             ASSERTV(intensity == intensity2);
                             int value = clamp((intensity > 0x1FFF) ? 0 : (intensity >> 5), 0, 255);
                             light.color.r = light.color.g = light.color.b = value;
-                            light.color.a = 0;
                             light.intensity = intensity;
 
                             light.radius = stream.readBE32() * 2;
@@ -3439,7 +4321,6 @@ namespace TR {
                     case CHUNK("ROOMEND ") :
                         ASSERTV(stream.readBE32() == 0x00000000);
                         ASSERTV(stream.readBE32() == 0x00000000);
-                        prepare();
                         break;
                 // SAD
                     case CHUNK("OBJFILE ") :
@@ -3761,12 +4642,14 @@ namespace TR {
                 Model &model = models[i];
                 model.type = Entity::remap(version, model.type);
 
-                for (int j = 0; j < model.mCount; j++)
+                for (int j = 0; j < model.mCount; j++) {
                     initMesh(model.mStart + j, model.type);
+                }
             }
 
-            for (int i = 0; i < staticMeshesCount; i++)
+            for (int i = 0; i < staticMeshesCount; i++) {
                 initMesh(staticMeshes[i].mesh);
+            }
 
             remapMeshOffsetsToIndices();
 
@@ -3866,8 +4749,9 @@ namespace TR {
                 dataOffset += FOURCC(soundData + dataOffset + 4) + 8; // add chunk size
             }
 
-            for (int i = 0; i < soundOffsetsCount; i++)
+            for (int i = 0; i < soundOffsetsCount; i++) {
                 soundOffsets[i] = dataOffsets[soundOffsets[i]];
+            }
         }
 
         static void sfxLoadAsync(Stream *stream, void *userData) {
@@ -3896,6 +4780,7 @@ namespace TR {
                     case Entity::LARA_BRAID          : extra.braid           = i; break;
                     case Entity::LARA_SPEC           : extra.laraSpec        = i; break;
                     case Entity::LARA_SKIN           : extra.laraSkin        = i; break;
+                    case Entity::LARA_SKIN_JOINTS    : extra.laraJoints      = i; break;
                     case Entity::CUT_1               : extra.meshSwap[0]     = i; break;
                     case Entity::CUT_2               : extra.meshSwap[1]     = i; break;
                     case Entity::CUT_3               : extra.meshSwap[2]     = i; break;
@@ -3957,7 +4842,7 @@ namespace TR {
                     default : ;
                 }
 
-            ASSERT(extra.glyphs != -1);
+            //ASSERT(extra.glyphs != -1);
         }
 
         void initCutscene() {
@@ -4039,12 +4924,17 @@ namespace TR {
 
                     for (int i = 0; i < mesh.fCount; i++) {
                         Face &f = mesh.faces[i];
-                        ASSERT(f.colored || f.flags.texture < objectTexturesCount);
+//                        ASSERT(f.colored || f.flags.texture < objectTexturesCount);
+
+                        if (f.flags.texture >= objectTexturesCount) {
+                            f.colored = true;
+                        }
+
                         if (f.colored) continue;
                         TextureInfo &t = objectTextures[f.flags.texture];
                         if (t.type != TEX_TYPE_OBJECT) {
                             if (!dupObjTex) {
-                                dupObjTex = new TextureInfo[128];
+                                dupObjTex = new TextureInfo[256];
                             }
 
                             int index = 0;
@@ -4056,7 +4946,7 @@ namespace TR {
                             }
 
                             if (index == dupObjTexCount) {
-                                ASSERT(index <= 128);
+                                ASSERT(index <= 256);
                                 dupObjTex[dupObjTexCount] = t;
                                 dupObjTex[dupObjTexCount].type = TEX_TYPE_OBJECT;
                                 dupObjTexCount++;
@@ -4126,20 +5016,24 @@ namespace TR {
             return TR::isCutsceneLevel(id);
         }
 
-        void readFace(Stream &stream, Face &f, bool colored, bool triangle) {
+        void readFace(Stream &stream, Face &f, bool colored, bool triangle, bool isRoomMesh) {
             f.triangle = triangle;
 
-            for (int i = 0; i < (triangle ? 3 : 4); i++)
+            for (int i = 0; i < (triangle ? 3 : 4); i++) {
                 stream.read(f.vertices[i]);
+            }
 
-            if (triangle)
+            if (triangle) {
                 f.vertices[3] = 0;
+            }
 
             stream.read(f.flags.value);
 
+            if (!isRoomMesh && (version & (VER_TR4 | VER_TR5))) {
+                stream.read(f.effects.value);
+            }
+
             f.colored = colored;
-            f.water = false;
-            f.flip  = false;
         }
 
         void readRoom(Stream &stream, int roomIndex) {
@@ -4150,7 +5044,9 @@ namespace TR {
         // room data
             stream.read(d.size);
             int startOffset = stream.pos;
-            if (version == VER_TR1_PSX) stream.seek(2);
+            if (version == VER_TR1_PSX) {
+                stream.seek(2);
+            }
 
             // only for TR3 PSX
             int32 partsCount;
@@ -4196,8 +5092,9 @@ namespace TR {
                 d.vertices = d.vCount ? new Room::Data::Vertex[d.vCount] : NULL;
 
                 d.vCount = d.fCount = 0;
-            } else
+            } else {
                 d.vertices = stream.read(d.vCount) ? new Room::Data::Vertex[d.vCount] : NULL;
+            }
 
             if (version == VER_TR3_PSX) {
                 for (int pIndex = 0; pIndex < partsCount; pIndex++) {
@@ -4243,16 +5140,12 @@ namespace TR {
                         ASSERT(t.unknown == 0);
 
                         Face &f = d.faces[d.fCount++];
-                        f.flags.texture     = t.texture;
-                        f.flags.doubleSided = false;
-                        f.triangle    = true;
-                        f.colored     = false;
-                        f.water       = false;
-                        f.flip        = false;
-                        f.vertices[0] = vStart + t.i0;
-                        f.vertices[1] = vStart + t.i1;
-                        f.vertices[2] = vStart + t.i2;
-                        f.vertices[3] = 0;
+                        f.flags.texture = t.texture;
+                        f.triangle      = true;
+                        f.vertices[0]   = vStart + t.i0;
+                        f.vertices[1]   = vStart + t.i1;
+                        f.vertices[2]   = vStart + t.i2;
+                        f.vertices[3]   = 0;
                         ASSERT(f.vertices[0] < d.vCount);
                         ASSERT(f.vertices[1] < d.vCount);
                         ASSERT(f.vertices[2] < d.vCount);
@@ -4279,16 +5172,11 @@ namespace TR {
                         ASSERT(r.unknown == 0);
 
                         Face &f = d.faces[d.fCount++];
-                        f.flags.texture     = texture;
-                        f.flags.doubleSided = false;
-                        f.triangle    = false;
-                        f.colored     = false;
-                        f.water       = false;
-                        f.flip        = false;
-                        f.vertices[0] = vStart + r.i0;
-                        f.vertices[1] = vStart + r.i1;
-                        f.vertices[2] = vStart + r.i2;
-                        f.vertices[3] = vStart + r.i3;
+                        f.flags.texture = texture;
+                        f.vertices[0]   = vStart + r.i0;
+                        f.vertices[1]   = vStart + r.i1;
+                        f.vertices[2]   = vStart + r.i2;
+                        f.vertices[3]   = vStart + r.i3;
 
                         ASSERT(f.vertices[0] < d.vCount);
                         ASSERT(f.vertices[1] < d.vCount);
@@ -4324,21 +5212,24 @@ namespace TR {
                         stream.read(v.pos.z);
                         stream.read(lighting);
 
-                        if (version == VER_TR2_PC || version == VER_TR3_PC)
+                        if (version == VER_TR2_PC || version == VER_TR3_PC || version == VER_TR4_PC) {
                             stream.read(v.attributes);
-                   
-                        if (version == VER_TR2_PC)
-                            stream.read(lighting); // real lighting value
+                        }
 
-                        if (version == VER_TR3_PC) {
+                        if (version == VER_TR2_PC) {
+                            stream.read(lighting); // real lighting value
+                        }
+
+                        if (version == VER_TR3_PC || version == VER_TR4_PC) {
                             Color16 color;
                             stream.read(color.value);
                             v.color = color.getBGR();
                         }
                     }
 
-                    if (version == VER_TR1_PSX || version == VER_TR3_PSX)
+                    if (version == VER_TR1_PSX || version == VER_TR3_PSX) {
                         lighting = 0x1FFF - (lighting << 5); // convert vertex luminance from PSX to PC format
+                    }
 
                     if ((version & VER_VERSION) < VER_TR3) { // lighting to color conversion
                         int value = clamp((lighting > 0x1FFF) ? 255 : (255 - (lighting >> 5)), 0, 255);
@@ -4347,8 +5238,9 @@ namespace TR {
                     }
                 }
 
-                if (version == VER_TR2_PSX)
+                if (version == VER_TR2_PSX) {
                     stream.seek(2);
+                }
 
                 int tmp = stream.pos;
                 if (version == VER_TR2_PSX) {
@@ -4356,8 +5248,9 @@ namespace TR {
                     stream.seek(sizeof(uint16) * d.rCount);
                     if ((stream.pos - startOffset) % 4) stream.seek(2);
                     stream.seek(sizeof(uint16) * 4 * d.rCount);
-                } else
+                } else {
                     stream.seek(stream.read(d.rCount) * FACE4_SIZE); // uint32 colored (not existing in file)
+                }
                 stream.read(d.tCount);
                 stream.setPos(tmp);
 
@@ -4373,7 +5266,11 @@ namespace TR {
                 if (version == VER_TR2_PSX) {
                     for (int i = 0; i < d.rCount; i++)
                         stream.raw(&d.faces[i].flags.value, sizeof(uint16));
-                    if ((stream.pos - startOffset) % 4) stream.seek(2);
+                    
+                    if ((stream.pos - startOffset) % 4) {
+                        stream.seek(2);
+                    }
+
                     for (int i = 0; i < d.rCount; i++) {
                         Face &f = d.faces[i];
                         stream.raw(f.vertices, sizeof(uint16) * 4);
@@ -4381,13 +5278,12 @@ namespace TR {
                         f.vertices[1] >>= 2;
                         f.vertices[2] >>= 2;
                         f.vertices[3] >>= 2;
-                        f.triangle = false;
-                        f.colored  = false;
-                        f.water    = false;
-                        f.flip     = false;
                     }
-                } else
-                    for (int i = 0; i < d.rCount; i++) readFace(stream, d.faces[idx++], false, false);
+                } else {
+                    for (int i = 0; i < d.rCount; i++) {
+                        readFace(stream, d.faces[idx++], false, false, true);
+                    }
+                }
 
                 stream.read(tmpCount);
                 ASSERT(tmpCount == d.tCount);
@@ -4402,33 +5298,34 @@ namespace TR {
                         f.vertices[1] >>= 2;
                         f.vertices[2] >>= 2;
                         f.vertices[3] = 0;
-                        f.triangle = true;
-                        f.colored  = false;
-                        f.water    = false;
-                        f.flip     = false;
+                        f.triangle    = true;
                     }
                 } else {
-                    for (int i = 0; i < d.tCount; i++)
-                        readFace(stream, d.faces[idx++], false, true);
+                    for (int i = 0; i < d.tCount; i++) {
+                        readFace(stream, d.faces[idx++], false, true, true);
+                    }
                 }
             }
 
             if (version & VER_PSX) { // swap indices (quad strip -> quad list) only for PSX version
-                for (int j = 0; j < d.fCount; j++)
-                    if (!d.faces[j].triangle)
+                for (int j = 0; j < d.fCount; j++) {
+                    if (!d.faces[j].triangle) {
                         swap(d.faces[j].vertices[2], d.faces[j].vertices[3]);
+                    }
+                }
             }
 
         // room sprites
             if (version == VER_TR2_PSX || version == VER_TR3_PSX) { // there is no room sprites
                 d.sprites = NULL;
                 d.sCount  = 0;
-            } else
+            } else {
                 stream.read(d.sprites, stream.read(d.sCount));
+            }
 
-            if (version == VER_TR3_PSX)
-                if (partsCount != 0)
-                    stream.seek(4); // skip unknown shit
+            if (version == VER_TR3_PSX && partsCount != 0) {
+                stream.seek(4); // skip unknown shit
+            }
 
             ASSERT(int(d.size * 2) >= stream.pos - startOffset);
             stream.setPos(startOffset + d.size * 2);
@@ -4465,15 +5362,17 @@ namespace TR {
                 } else {
                     s.material = s.boxIndex & 0x0F; 
                     s.boxIndex = s.boxIndex >> 4;
-                    if (s.boxIndex == 2047) 
+                    if (s.boxIndex == 2047) {
                         s.boxIndex = 0; // TODO TR3 slide box indices
+                    }
                 }
             }
+
         // ambient light luminance
             stream.read(r.ambient);
 
             if (version != VER_TR3_PSX) {
-                if (version & (VER_TR2 | VER_TR3))
+                if (version & (VER_TR2 | VER_TR3 | VER_TR4))
                     stream.read(r.ambient2);
 
                 if (version & VER_TR2)
@@ -4493,32 +5392,53 @@ namespace TR {
 
                 uint16 intensity;
 
-                if (version & VER_TR3)
+                if (version & (VER_TR3 | VER_TR4)) {
                     stream.read(light.color);
+                    stream.read(light.type);
+                }
 
-                stream.read(intensity);
+                if (version & VER_TR4) {
+                    uint8 unknown;
+                    stream.read(unknown);
+                    //ASSERT(unknown == 0x00 || unknown == 0xFF);
+                    uint8 byteIntensity;
+                    intensity = stream.read(byteIntensity);
+                    stream.read(light.in);
+                    stream.read(light.out);
+                    stream.read(light.length);
+                    stream.read(light.cutoff);
+                    stream.read(light.dir);
+                    light.radius = uint32(light.length);
+                } else {
+                    stream.read(intensity);
+                }
 
-                if (version == VER_TR1_PSX)
+                if (version == VER_TR1_PSX) {
                     stream.seek(2);
+                }
 
-                if (version & (VER_TR2 | VER_TR3))
+                if (version & (VER_TR2 | VER_TR3)) {
                     stream.seek(2); // intensity2
+                }
 
-                stream.read(light.radius);
+                if (version != VER_TR4_PC) {
+                    stream.read(light.radius);
+                }
 
-                if (version & VER_TR2)
+                if (version & VER_TR2) {
                     stream.seek(4); // radius2
+                }
 
                 if ((version & VER_VERSION) < VER_TR3) {
                     int value = clamp((intensity > 0x1FFF) ? 0 : (intensity >> 5), 0, 255);
                     light.color.r = light.color.g = light.color.b = value;
-                    light.color.a = 0;
                 }
 
                 light.intensity = intensity;
 
-                if (version == VER_TR3_PSX)
+                if (version == VER_TR3_PSX) {
                     light.radius >>= 2;
+                }
 
                 light.radius *= 2;
             }
@@ -4530,15 +5450,16 @@ namespace TR {
                 stream.read(m.x);
                 stream.read(m.y);
                 stream.read(m.z);
-                stream.read(m.rotation);
-                if (version & VER_TR3) {
+                stream.read(m.rotation.value);
+                if (version & (VER_TR3 | VER_TR4)) {
                     Color16 color;
                     stream.read(color.value);
                     m.color = color;
                     stream.seek(2);
                 } else {
-                    if (version & VER_TR2)
+                    if (version & VER_TR2) {
                         stream.seek(2);
+                    }
 
                     uint16 intensity;
                     stream.read(intensity);
@@ -4550,16 +5471,18 @@ namespace TR {
                 }
 
                 stream.read(m.meshID);
-                if (version == VER_TR1_PSX)
+                if (version == VER_TR1_PSX) {
                     stream.seek(2); // skip padding
+                }
             }
 
         // misc flags
             stream.read(r.alternateRoom);
             stream.read(r.flags.value);
-            if (version & VER_TR3) {
+            if (version & (VER_TR3 | VER_TR4)) {
                 stream.read(r.waterScheme);
                 stream.read(r.reverbType);
+                stream.read(r.filter);
             }
 
             r.dynLightsCount = 0;
@@ -4567,9 +5490,11 @@ namespace TR {
 
         void initMesh(int mIndex, Entity::Type type = Entity::NONE) {
             int offset = meshOffsets[mIndex];
-            for (int i = 0; i < meshesCount; i++)
-                if (meshes[i].offset == offset)
+            for (int i = 0; i < meshesCount; i++) {
+                if (meshes[i].offset == offset) {
                     return;
+                }
+            }
 
             Stream stream(NULL, &meshData[offset / 2], 1024 * 1024);
 
@@ -4677,9 +5602,6 @@ namespace TR {
                         for (int k = 0; k < count; k++) {
                             ASSERT(fIndex < mesh.fCount);
                             Face &f = mesh.faces[fIndex++];
-                            f.water   = false;
-                            f.colored = false;
-                            f.flip    = 0;
                             switch (type) {
                                 case TYPE_T_COLOR      : f.colored = true;
                                 case TYPE_T_TEX_UNK    : 
@@ -4735,7 +5657,6 @@ namespace TR {
                                 case TYPE_R_FLIP_TRANSP : f.flip = 1;
                                 case TYPE_R_TEX         :
                                 case TYPE_R_TRANSP      :
-                                    f.triangle    = false;
                                     f.vertices[0] = (stream.readBE16() >> 5);
                                     f.vertices[1] = (stream.readBE16() >> 5);
                                     f.vertices[2] = (stream.readBE16() >> 5);
@@ -4772,24 +5693,9 @@ namespace TR {
                 }
                 case VER_TR1_PC :
                 case VER_TR2_PC :
-                case VER_TR3_PC : {
-                /*  struct {
-                        short3      center;
-                        short2      collider;
-                        short       vCount;
-                        short3      vertices[vCount];
-                        short       nCount;
-                        short3      normals[max(0, nCount)];
-                        ushort      luminance[-min(0, nCount)];
-                        short       rCount;
-                        Rectangle   rectangles[rCount];
-                        short       tCount;
-                        Triangle    triangles[tCount];
-                        short       crCount;
-                        Rectangle   crectangles[crCount];
-                        short       ctCount;
-                        Triangle    ctriangles[ctCount];
-                    }; */
+                case VER_TR3_PC : 
+                case VER_TR4_PC :
+                case VER_TR5_PC : {
                     mesh.vertices = new Mesh::Vertex[mesh.vCount];
                     for (int i = 0; i < mesh.vCount; i++) {
                         short4 &c = mesh.vertices[i].coord;
@@ -4815,13 +5721,22 @@ namespace TR {
                         }
                     }
 
-                    uint16 rCount, tCount, crCount, ctCount;
+                    uint16 rCount, tCount, crCount = 0, ctCount = 0;
+
+                    int faceSize4 = FACE4_SIZE;
+                    int faceSize3 = FACE3_SIZE;
+                    if (version & (VER_TR4 | VER_TR5)) {
+                        faceSize4 += 2;
+                        faceSize3 += 2;
+                    }
 
                     int tmp = stream.pos;
-                    stream.seek(stream.read(rCount)  * FACE4_SIZE); // uint32 colored (not existing in file)
-                    stream.seek(stream.read(tCount)  * FACE3_SIZE);
-                    stream.seek(stream.read(crCount) * FACE4_SIZE);
-                    stream.seek(stream.read(ctCount) * FACE3_SIZE);
+                    stream.seek(stream.read(rCount) * faceSize4); // uint32 colored (not existing in file)
+                    stream.seek(stream.read(tCount) * faceSize3);
+                    if (!(version & (VER_TR4 | VER_TR5))) {
+                        stream.seek(stream.read(crCount) * faceSize4);
+                        stream.seek(stream.read(ctCount) * faceSize3);
+                    }
                     stream.setPos(tmp);
 
                     mesh.rCount = rCount + crCount;
@@ -4830,26 +5745,26 @@ namespace TR {
                     mesh.faces  = mesh.fCount ? new Face[mesh.fCount] : NULL;
 
                     int idx = 0;
-                    stream.seek(sizeof(rCount));  for (int i = 0; i < rCount; i++)  readFace(stream, mesh.faces[idx++], false, false);
-                    stream.seek(sizeof(tCount));  for (int i = 0; i < tCount; i++)  readFace(stream, mesh.faces[idx++], false,  true);
-                    stream.seek(sizeof(crCount)); for (int i = 0; i < crCount; i++) readFace(stream, mesh.faces[idx++],  true, false);
-                    stream.seek(sizeof(ctCount)); for (int i = 0; i < ctCount; i++) readFace(stream, mesh.faces[idx++],  true,  true);
+                    stream.seek(sizeof(rCount));  for (int i = 0; i < rCount; i++)  readFace(stream, mesh.faces[idx++], false, false, false);
+                    stream.seek(sizeof(tCount));  for (int i = 0; i < tCount; i++)  readFace(stream, mesh.faces[idx++], false,  true, false);
+                    if (!(version & (VER_TR4 | VER_TR5))) {
+                        stream.seek(sizeof(crCount)); for (int i = 0; i < crCount; i++) readFace(stream, mesh.faces[idx++],  true, false, false);
+                        stream.seek(sizeof(ctCount)); for (int i = 0; i < ctCount; i++) readFace(stream, mesh.faces[idx++],  true,  true, false);
+                    }
+
+                #ifdef _DEBUG
+                    for (int i = 0; i < mesh.fCount; i++) {
+                        Face &f = mesh.faces[i];
+                        for (int j = 0; j < (f.triangle ? 3 : 4); j++) {
+                            ASSERT(f.vertices[j] < mesh.vCount);
+                        }
+                    }
+                #endif
+
                     break;
                 }
                 case VER_TR1_PSX :
                 case VER_TR2_PSX : {
-                /*  struct {
-                        short3      center;
-                        short2      collider;
-                        short       vCount;
-                        short4      vertices[abs(vCount)];
-                        short4      normals[max(0, vCount)];
-                        ushort      luminance[-min(0, vCount)];
-                        short       rCount;
-                        Rectangle   rectangles[rCount];
-                        short       tCount;
-                        Triangle    triangles[tCount];
-                    }; */
                     int nCount = mesh.vCount;
                     mesh.vCount = abs(mesh.vCount);
                     mesh.vertices = new Mesh::Vertex[mesh.vCount];
@@ -4887,8 +5802,8 @@ namespace TR {
                     mesh.faces  = mesh.fCount ? new Face[mesh.fCount] : NULL;
 
                     int idx = 0;
-                    stream.seek(sizeof(mesh.rCount)); for (int i = 0; i < mesh.rCount; i++) readFace(stream, mesh.faces[idx++], false, false);
-                    stream.seek(sizeof(mesh.tCount)); for (int i = 0; i < mesh.tCount; i++) readFace(stream, mesh.faces[idx++], false,  true);
+                    stream.seek(sizeof(mesh.rCount)); for (int i = 0; i < mesh.rCount; i++) readFace(stream, mesh.faces[idx++], false, false, false);
+                    stream.seek(sizeof(mesh.tCount)); for (int i = 0; i < mesh.tCount; i++) readFace(stream, mesh.faces[idx++], false,  true, false);
 
                     if (!mesh.fCount)
                         LOG("! warning: mesh %d has no geometry with %d vertices\n", meshesCount - 1, mesh.vCount);
@@ -4955,12 +5870,8 @@ namespace TR {
                         stream.raw(&r, sizeof(r));
 
                         Face &f = mesh.faces[idx++];
-                        f.flags.doubleSided = false;
                         f.flags.texture     = (info & 0xFF) | (r.tex << 8);
-                        f.triangle = true;
-                        f.colored  = false;
-                        f.water    = false;
-                        f.flip     = false;
+                        f.triangle          = true;
 
                         f.vertices[0] = r.i0;
                         f.vertices[1] = r.i1;
@@ -4976,12 +5887,7 @@ namespace TR {
                             stream.read(info);
                             
                         Face &f = mesh.faces[idx++];
-                        f.flags.doubleSided = false;
-                        f.flags.texture     = info & 0xFFFF;
-                        f.triangle = false;
-                        f.colored  = false;
-                        f.water    = false;
-                        f.flip     = false;
+                        f.flags.texture = info & 0xFFFF;
 
                         struct {
                             uint32 i0:8, i1:8, i2:8, i3:8;
@@ -5116,7 +6022,29 @@ namespace TR {
                         uint8   xh2, x2, yh2, y2;
                         uint8   xh3, x3, yh3, y3;
                     } d;
+
                     stream.raw(&d, sizeof(d));
+                    SET_PARAMS(t, d, 0);
+                    break;
+                }
+                case VER_TR4_PC :
+                case VER_TR5_PC : {
+                    struct {
+                        uint16  attribute;
+                        uint16  tile:14, :2;
+                        uint16  flags;
+                        uint8   xh0, x0, yh0, y0;
+                        uint8   xh1, x1, yh1, y1;
+                        uint8   xh2, x2, yh2, y2;
+                        uint8   xh3, x3, yh3, y3;
+                    } d;
+
+                    struct {
+                        uint32 U, V, W, H;
+                    } duv;
+
+                    stream.raw(&d,   sizeof(d));
+                    stream.raw(&duv, sizeof(duv));
                     SET_PARAMS(t, d, 0);
                     break;
                 }
@@ -5157,8 +6085,9 @@ namespace TR {
 
         void readObjectTex(Stream &stream) {
             objectTextures = stream.read(objectTexturesCount) ? new TextureInfo[objectTexturesCount] : NULL;
-            for (int i = 0; i < objectTexturesCount; i++)
+            for (int i = 0; i < objectTexturesCount; i++) {
                 readObjectTex(stream, objectTextures[i]);
+            }
         }
 
         void readSpriteTex(Stream &stream, TextureInfo &t) {
@@ -5199,7 +6128,9 @@ namespace TR {
                 }
                 case VER_TR1_PC :
                 case VER_TR2_PC :
-                case VER_TR3_PC : {
+                case VER_TR3_PC : 
+                case VER_TR4_PC :
+                case VER_TR5_PC : {
                     struct {
                         uint16  tile;
                         uint8   u, v;
@@ -5275,18 +6206,22 @@ namespace TR {
         void readAnimTex(Stream &stream) {
             uint32 size;
             stream.read(size);
+            if (size) {
+                stream.read(animTexturesCount);
+                animTextures = animTexturesCount ? new AnimTexture[animTexturesCount] : NULL;
 
-            if (!size) return;
+                for (int i = 0; i < animTexturesCount; i++) {
+                    AnimTexture &animTex = animTextures[i];
+                    animTex.count    = stream.readLE16() + 1;
+                    animTex.textures = new uint16[animTex.count];
+                    for (int j = 0; j < animTex.count; j++)
+                        animTex.textures[j] = stream.readLE16();
+                }
+            }
 
-            stream.read(animTexturesCount);
-            animTextures = animTexturesCount ? new AnimTexture[animTexturesCount] : NULL;
-
-            for (int i = 0; i < animTexturesCount; i++) {
-                AnimTexture &animTex = animTextures[i];
-                animTex.count    = stream.readLE16() + 1;
-                animTex.textures = new uint16[animTex.count];
-                for (int j = 0; j < animTex.count; j++)
-                    animTex.textures[j] = stream.readLE16();
+            if (version & (VER_TR4 | VER_TR5)) {
+                uint8 animTexUVs;
+                stream.read(animTexUVs);
             }
         }
 
@@ -5301,10 +6236,14 @@ namespace TR {
                 stream.read(e.x);
                 stream.read(e.y);
                 stream.read(e.z);
-                stream.read(e.rotation);
+                stream.read(e.rotation.value);
                 stream.read(e.intensity);
-                if (version & (VER_TR2 | VER_TR3))
+                if (version & (VER_TR2 | VER_TR3)) {
                     stream.read(e.intensity2);
+                }
+                if (version & (VER_TR4 | VER_TR5)) {
+                    stream.read(e.OCB);
+                }
                 stream.read(e.flags.value);
             }
         }
@@ -5452,6 +6391,23 @@ namespace TR {
                     }
                     break;
                 }
+                case VER_TR4_PC :
+                case VER_TR5_PC : {
+                    ASSERT(tiles32);
+
+                    Color32 *ptr = &dst->color[uv.y * 256];
+                    for (int y = uv.y; y < uv.w; y++) {
+                        for (int x = uv.x; x < uv.z; x++) {
+                            Color32 c = tiles32[t->tile].color[y * 256 + x];
+                            ptr[x].r = c.b;
+                            ptr[x].g = c.g;
+                            ptr[x].b = c.r;
+                            ptr[x].a = c.a;
+                        }
+                        ptr += 256;
+                    }
+                    break;
+                }
                 case VER_TR1_PSX :
                 case VER_TR2_PSX : 
                 case VER_TR3_PSX : {
@@ -5488,7 +6444,12 @@ namespace TR {
         Color32 getColor(int texture) const {
             switch (version) {
                 case VER_TR1_SAT : return Color16((uint16)texture);
-                case VER_TR1_PC  : return palette[texture & 0xFF];
+                case VER_TR1_PC  : 
+                    #ifdef _GAPI_SW
+                        return Color32(texture & 0xFF, 0, 0, 142);
+                    #else
+                        return palette[texture & 0xFF];
+                    #endif
                 case VER_TR2_PC  :
                 case VER_TR3_PC  : return palette32[(texture >> 8) & 0xFF];
                 case VER_TR1_PSX : 
@@ -5502,6 +6463,7 @@ namespace TR {
                     CLUT  &clut = cluts[t.clut];
                     return clut.color[part ? tile.index[idx].b : tile.index[idx].a];
                 }
+                case VER_TR4_PC : break;
                 default : ASSERT(false);
             }
             return Color32(255, 0, 255, 255);
@@ -5509,13 +6471,14 @@ namespace TR {
 
         Stream* getSampleStream(int index) const {
             if (!soundOffsets || !soundData) return NULL;
-            uint8 *data = &soundData[soundOffsets[index]];
+            uint8 *data = soundData + soundOffsets[index];
             uint32 size = 0;
             switch (version) {
                 case VER_TR1_SAT : size = soundSize[index]; break;
-                case VER_TR1_PC  : 
+                case VER_TR1_PC  :
                 case VER_TR2_PC  :
-                case VER_TR3_PC  : size = FOURCC(data + 4) + 8; break; // read size from wave header
+                case VER_TR3_PC  :
+                case VER_TR4_PC  : size = FOURCC(data + 4) + 8; break; // read size from wave header
                 case VER_TR1_PSX :
                 case VER_TR2_PSX :
                 case VER_TR3_PSX : size = soundSize[index]; break;

@@ -4,7 +4,7 @@
 #include "core.h"
 
 #if defined(_DEBUG) || defined(PROFILE)
-    //#define _DEBUG_SHADERS
+    //#define _DEBUG_SHADERS "../../OpenLara/src/shaders/"
 #endif
 
 #ifdef __LIBRETRO__
@@ -535,6 +535,7 @@ namespace GAPI {
         void init(Core::Pass pass, int type, int *def, int defCount) {}
         void deinit() {}
         void bind() {}
+        void validate() {}
         void setParam(UniformType uType, const vec4  &value, int count = 1) {}
         void setParam(UniformType uType, const mat4  &value, int count = 1) {}
     #else
@@ -562,13 +563,13 @@ namespace GAPI {
             #ifdef _DEBUG_SHADERS
                 Stream *stream = NULL;
                 switch (pass) {
-                    case Core::passCompose : stream = new Stream("../../src/shaders/compose.glsl"); break;
-                    case Core::passShadow  : stream = new Stream("../../src/shaders/shadow.glsl");  break;
-                    case Core::passAmbient : stream = new Stream("../../src/shaders/ambient.glsl"); break;
-                    case Core::passSky     : stream = new Stream("../../src/shaders/sky.glsl");     break;
-                    case Core::passWater   : stream = new Stream("../../src/shaders/water.glsl");   break;
-                    case Core::passFilter  : stream = new Stream("../../src/shaders/filter.glsl");  break;
-                    case Core::passGUI     : stream = new Stream("../../src/shaders/gui.glsl");     break;
+                    case Core::passCompose : stream = new Stream(_DEBUG_SHADERS "compose.glsl"); break;
+                    case Core::passShadow  : stream = new Stream(_DEBUG_SHADERS "shadow.glsl");  break;
+                    case Core::passAmbient : stream = new Stream(_DEBUG_SHADERS "ambient.glsl"); break;
+                    case Core::passSky     : stream = new Stream(_DEBUG_SHADERS "sky.glsl");     break;
+                    case Core::passWater   : stream = new Stream(_DEBUG_SHADERS "water.glsl");   break;
+                    case Core::passFilter  : stream = new Stream(_DEBUG_SHADERS "filter.glsl");  break;
+                    case Core::passGUI     : stream = new Stream(_DEBUG_SHADERS "gui.glsl");     break;
                     default                : ASSERT(false);  return;
                 }
                 
@@ -898,7 +899,7 @@ namespace GAPI {
             glGenerateMipmap(target);
             if ((opt & (OPT_VOLUME | OPT_CUBEMAP | OPT_NEAREST)) == 0 && (Core::support.maxAniso > 0)) {
                 glTexParameteri(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, min(int(Core::support.maxAniso), 8));
-            #if !defined(_OS_RPI) && !defined(_OS_CLOVER) && !defined(_GAPI_GLES2) // TODO
+            #if !defined(_OS_RPI) && !defined(_OS_CLOVER) && !(defined (__SDL2__) && defined (_GAPI_GLES))// TODO
                 glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 3);
             #endif
             }
@@ -1258,7 +1259,6 @@ namespace GAPI {
         support.texHalfLinear  = support.colorHalf || extSupport(ext, "GL_ARB_texture_float") || extSupport(ext, "_texture_half_float_linear") || extSupport(ext, "_color_buffer_half_float");
  
         support.texHalf        = support.texHalfLinear || extSupport(ext, "_texture_half_float");
-        support.clipDist       = false; // TODO
 
         #ifdef SDL2_GLES
             support.shaderBinary  = false; // TODO
@@ -1301,8 +1301,7 @@ namespace GAPI {
         glScalef(1.0f / 32767.0f, 1.0f / 32767.0f, 1.0f / 32767.0f);
 
         glClearColor(0, 0, 0, 0);
-    #endif
-
+    #else 
         char extHeader[256];
         GLSL_HEADER_VERT[0] = GLSL_HEADER_FRAG[0] = extHeader[0] = 0;
         if (_GL_OES_standard_derivatives) {
@@ -1366,6 +1365,7 @@ namespace GAPI {
     #endif
         ASSERT(strlen(GLSL_HEADER_VERT) < COUNT(GLSL_HEADER_VERT));
         ASSERT(strlen(GLSL_HEADER_FRAG) < COUNT(GLSL_HEADER_FRAG));
+    #endif // FFP
     }
 
     void deinit() {
@@ -1381,15 +1381,19 @@ namespace GAPI {
         }
     }
 
+    inline mat4::ProjRange getProjRange() {
+        return mat4::PROJ_NEG_POS;
+    }
+
     mat4 ortho(float l, float r, float b, float t, float znear, float zfar) {
         mat4 m;
-        m.ortho(mat4::PROJ_NEG_POS, l, r, b, t, znear, zfar);
+        m.ortho(getProjRange(), l, r, b, t, znear, zfar);
         return m;
     }
 
     mat4 perspective(float fov, float aspect, float znear, float zfar, float eye) {
         mat4 m;
-        m.perspective(mat4::PROJ_NEG_POS, fov, aspect, znear, zfar, eye);
+        m.perspective(getProjRange(), fov, aspect, znear, zfar, eye);
         return m;
     }
 
@@ -1516,9 +1520,12 @@ namespace GAPI {
         glClearColor(color.x, color.y, color.z, color.w);
     }
 
-    void setViewport(const Viewport &vp) {
-        glViewport(vp.x, vp.y, vp.width, vp.height);
-        glScissor(vp.x, vp.y, vp.width, vp.height);
+    void setViewport(const short4 &v) {
+        glViewport(v.x, v.y, v.z, v.w);
+    }
+
+    void setScissor(const short4 &s) {
+        glScissor(s.x, s.y, s.z, s.w);
     }
 
     void setDepthTest(bool enable) {
@@ -1633,7 +1640,7 @@ namespace GAPI {
             Core::active.shader->validate();
         }
 
-        glDrawElements(GL_TRIANGLES, range.iCount, GL_UNSIGNED_SHORT, mesh->iBuffer + range.iStart);
+        glDrawElements(GL_TRIANGLES, range.iCount, sizeof(Index) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, mesh->iBuffer + range.iStart);
     }
 
     vec4 copyPixel(int x, int y) {

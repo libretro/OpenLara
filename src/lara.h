@@ -419,7 +419,7 @@ struct Lara : Character {
                 if (joints[j].pos.y > info.floor)
                     joints[j].pos.y = info.floor;
 
-            #define BRAID_RADIUS 16.0f
+            #define BRAID_RADIUS 0.0f
 
             lara->updateJoints();
 
@@ -498,10 +498,12 @@ struct Lara : Character {
             mesh->renderModel(lara->level->extra.braid);
         }
 
-    } *braid;
+    } *braid[2];
 
-    Lara(IGame *game, int entity) : Character(game, entity, LARA_MAX_HEALTH), wpnCurrent(TR::Entity::NONE), wpnNext(TR::Entity::NONE), braid(NULL) {
+    Lara(IGame *game, int entity) : Character(game, entity, LARA_MAX_HEALTH), wpnCurrent(TR::Entity::NONE), wpnNext(TR::Entity::NONE) {
         camera = new Camera(game, this);
+
+        braid[0] = braid[1] = NULL;
 
         itemHolster  = TR::Entity::NONE;
         hitTimer     = 0.0f;
@@ -547,8 +549,26 @@ struct Lara : Character {
             arms[i].rotAbs    = quat(0, 0, 0, 1);
         }
 
-        if (level->extra.braid > -1)
-            braid = new Braid(this, (level->version & (TR::VER_TR2 | TR::VER_TR3)) ? vec3(-2.0f, -16.0f, -48.0f) : vec3(-4.0f, 24.0f, -48.0f));
+        if (level->extra.braid > -1) {
+            vec3 offset(0.0f);
+            switch (level->version & TR::VER_VERSION) {
+                case TR::VER_TR1 :
+                    braid[0] = new Braid(this, vec3(-4.0f, 24.0f, -48.0f));
+                    break;
+                case TR::VER_TR2 :
+                case TR::VER_TR3 :
+                    braid[0] = new Braid(this, vec3(0.0f, -23.0f, -55.0f));
+                    break;
+                case TR::VER_TR4 :
+                    if (isYoung()) {
+                        braid[0] = new Braid(this, vec3(-32.0f, -48.0f, -32.0f));
+                        braid[1] = new Braid(this, vec3( 32.0f, -48.0f, -32.0f));
+                    } else {
+                        braid[0] = new Braid(this, vec3(0.0f, -23.0f, -32.0f));
+                    }
+                    break;
+            }
+        }
 
     // TR1
         //reset(14, vec3(40448, 3584, 60928), PI * 0.5f, STAND_ONWATER);  // gym (pool)
@@ -626,8 +646,13 @@ struct Lara : Character {
 
     virtual ~Lara() {
         delete camera;
-        delete braid;
+        delete braid[0];
+        delete braid[1];
         delete environment;
+    }
+
+    bool isYoung() {
+        return level->id == TR::LVL_TR4_ANGKOR1 || level->id == TR::LVL_TR4_ANG_RACE;
     }
 
     bool canSaveGame() {
@@ -1397,7 +1422,7 @@ struct Lara : Character {
 
         // flip left and right by relative target direction
             if (count > 1) {
-                int side[2] = { 0, 0 };
+                float side[2] = { 0, 0 };
                 vec3 dir = getDir();
                 dir.y = 0.0f;
 
@@ -1506,7 +1531,7 @@ struct Lara : Character {
         if (box.intersect(m, from, v, t)) {
             t *= v.length();
             v = v.normal();
-            Sphere spheres[MAX_SPHERES];
+            Sphere spheres[MAX_JOINTS];
             int count = target->getSpheres(spheres);
             for (int i = 0; i < count; i++) {
                 float st;
@@ -1546,6 +1571,9 @@ struct Lara : Character {
     }
 
     void doBubbles() {
+        if ((level->version & TR::VER_VERSION) > TR::VER_TR2) {
+            return; // TODO
+        }
         int count = rand() % 3;
         if (!count) return;
         game->playSound(TR::SND_BUBBLE, pos, Sound::PAN);
@@ -2106,6 +2134,9 @@ struct Lara : Character {
 
             switch (cmd.action) {
                 case TR::Action::ACTIVATE : {
+                    if (cmd.args >= level->entitiesBaseCount) {
+                        break;
+                    }
                     TR::Entity &e = level->entities[cmd.args];
                     Controller *controller = (Controller*)e.controller;
                     ASSERT(controller);
@@ -2223,6 +2254,14 @@ struct Lara : Character {
                         if (!game->playSound(TR::SND_SECRET, pos))
                             game->playTrack(TR::TRACK_TR1_SECRET, true);
                     }
+                    break;
+                case TR::Action::CLEAR_BODIES :
+                    break;
+                case TR::Action::FLYBY :
+                    cmdIndex++; // TODO
+                    break;
+                case TR::Action::CUTSCENE :
+                    cmdIndex++; // TODO
                     break;
             }
         }
@@ -3063,28 +3102,35 @@ struct Lara : Character {
         if (input & LOOK)
             return input;
 
+        if (camera->spectator)
+            return input;
+
         Input::Joystick &joy = Input::joy[Core::settings.controls[pid].joyIndex];
 
-        if (!((state == STATE_STOP || state == STATE_SURF_TREAD || state == STATE_HANG) && fabsf(joy.L.x) < 0.5f && fabsf(joy.L.y) < 0.5f)) {
+        vec2 L = joy.L;
+
+        if (L.length() < JOY_DEAD_ZONE) L = vec2(0.0f); // dead zone
+
+        if (!((state == STATE_STOP || state == STATE_SURF_TREAD || state == STATE_HANG) && fabsf(L.x) < 0.5f && fabsf(L.y) < 0.5f)) {
             bool moving = state == STATE_RUN || state == STATE_WALK || state == STATE_BACK || state == STATE_FAST_BACK || state == STATE_SURF_SWIM || state == STATE_SURF_BACK || state == STATE_FORWARD_JUMP;
 
             if (!moving) {
-                if (fabsf(joy.L.x) < fabsf(joy.L.y))
-                    joy.L.x = 0.0f;
+                if (fabsf(L.x) < fabsf(L.y))
+                    L.x = 0.0f;
                 else
-                    joy.L.y = 0.0f;
+                    L.y = 0.0f;
             }
 
-            if (joy.L.x != 0.0f) {
-                input |= (joy.L.x < 0.0f) ? LEFT : RIGHT;
+            if (L.x != 0.0f) {
+                input |= (L.x < 0.0f) ? LEFT : RIGHT;
                 if (moving || stand == STAND_UNDERWATER || stand == STAND_ONWATER)
-                    rotFactor.y = min(fabsf(joy.L.x) / 0.9f, 1.0f);
+                    rotFactor.y = min(fabsf(L.x) / 0.9f, 1.0f);
             }
 
-            if (joy.L.y != 0.0f) {
-                input |= (joy.L.y < 0.0f) ? FORTH : BACK;
+            if (L.y != 0.0f) {
+                input |= (L.y < 0.0f) ? FORTH : BACK;
                 if (stand == STAND_UNDERWATER)
-                    rotFactor.x = min(fabsf(joy.L.y) / 0.9f, 1.0f);
+                    rotFactor.x = min(fabsf(L.y) / 0.9f, 1.0f);
             }
         }
 
@@ -3202,8 +3248,13 @@ struct Lara : Character {
 
             updateLights();
 
-            if (fixRoomIndex() && braid)
-                braid->update();
+            if (fixRoomIndex()) {
+                for (int i = 0; i < COUNT(braid); i++) {
+                    if (braid[i]) {
+                        braid[i]->update();
+                    }
+                }
+            }
         } else {
             switch (usedItem) {
                 case TR::Entity::INV_MEDIKIT_SMALL :
@@ -3219,8 +3270,11 @@ struct Lara : Character {
             }
 
             Character::update();
-            if (braid)
-                braid->update();
+            for (int i = 0; i < COUNT(braid); i++) {
+                if (braid[i]) {
+                    braid[i]->update();
+                }
+            }
         }
         
         camera->update();
@@ -3779,10 +3833,23 @@ struct Lara : Character {
         if (Core::pass != Core::passShadow && camera->firstPerson && camera->viewIndex == -1 && game->getCamera() == camera) // hide head in first person view // TODO: fix for firstPerson with viewIndex always == -1
             visibleMask &= ~JOINT_MASK_HEAD;
         Controller::render(frustum, mesh, type, caustics);
+
+        if (level->extra.laraJoints > -1) {
+            const TR::Model *model = getModel();
+            for (int i = 0; i < model->mCount; i++) {
+                joints[i].w = 1.0f;
+            }
+            Core::setBasis(joints, model->mCount);
+            mesh->renderModel(level->extra.laraJoints, caustics); 
+        }
+
         visibleMask = visMask;
 
-        if (braid)
-            braid->render(mesh);
+        for (int i = 0; i < COUNT(braid); i++) {
+            if (braid[i]) {
+                braid[i]->render(mesh);
+            }
+        }
 
         if (state == STATE_MIDAS_DEATH /* && Core::pass == Core::passCompose */) {
             game->setRoomParams(getRoomIndex(), Shader::MIRROR, 1.2f, 1.0f, 0.2f, 1.0f, false);

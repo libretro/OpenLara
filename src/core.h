@@ -6,6 +6,8 @@
 #endif
 
 #include <stdio.h>
+#include <memory.h>
+#include <stdint.h>
 
 #define OS_FILEIO_CACHE
 #define OS_PTHREAD_MT
@@ -22,25 +24,31 @@
     //#define _GAPI_D3D9   1
     //#define _GAPI_D3D11  1
     //#define _GAPI_VULKAN 1
+    //#define _GAPI_SW     1
+
     //#define _NAPI_SOCKET
 #endif
 
     #include <windows.h>
 
     #undef OS_PTHREAD_MT
+
+    #ifdef _GAPI_GL
+        #define VR_SUPPORT
+    #endif
 #elif ANDROID
     #define _OS_ANDROID 1
     #define _GAPI_GL    1
     #define _GAPI_GLES  1
     //#define _GAPI_VULKAN
 
-    extern void osToggleVR(bool enable);
+    #define VR_SUPPORT
 #elif __SDL2__
     #define _GAPI_GL   1
-#ifdef SDL2_GLES
-    #define _GAPI_GLES 1
-    #define DYNGEOM_NO_VBO
-#endif
+    #ifdef SDL2_GLES
+        #define _GAPI_GLES 1
+        #define DYNGEOM_NO_VBO
+    #endif
 #elif __RPI__
     #define _OS_RPI    1
     #define _GAPI_GL   1
@@ -59,6 +67,10 @@
     #define _GAPI_GLES 1
 
     #define DYNGEOM_NO_VBO
+#elif __BITTBOY__
+    #define _OS_BITTBOY 1
+    #define _OS_LINUX   1
+    #define _GAPI_SW    1
 #elif __linux__
     #define _OS_LINUX 1
     #define _GAPI_GL  1
@@ -89,7 +101,6 @@
     #define _OS_PSP  1
     #define _GAPI_GU 1
 
-    #define FFP
     #define TEX_SWIZZLE
     //#define EDRAM_MESH
     #define EDRAM_TEX
@@ -115,9 +126,13 @@
     #include "libs/tinf/tinf.h"
 #endif
 
+#if defined(_GAPI_SW) || defined(_GAPI_GU)
+    #define FFP
+#endif
+
 #ifdef FFP
     #define SPLIT_BY_TILE
-    #ifdef _OS_PSP
+    #if defined(_GAPI_GU)
         #define SPLIT_BY_CLUT
     #endif
 #else
@@ -229,19 +244,19 @@ namespace Core {
         bool texBorder;
         bool colorFloat, texFloat, texFloatLinear;
         bool colorHalf, texHalf,  texHalfLinear;
-        bool clipDist;
     #ifdef PROFILE
         bool profMarker;
         bool profTiming;
     #endif
     } support;
 
-#define SETTINGS_VERSION 6
+#define SETTINGS_VERSION 7
 #define SETTINGS_READING 0xFF
 
     struct Settings {
         enum Quality  { LOW, MEDIUM, HIGH };
         enum Stereo   { STEREO_OFF, STEREO_SBS, STEREO_ANAGLYPH, STEREO_SPLIT, STEREO_VR };
+        enum Scale    { SCALE_25, SCALE_50, SCALE_75, SCALE_100 };
 
         uint8 version;
 
@@ -256,6 +271,7 @@ namespace Core {
                 uint8 quality[4];
             };
             uint8 simple;
+            uint8 scale;
             uint8 vsync;
             uint8 stereo;
             void setFilter(Quality value) {
@@ -265,7 +281,7 @@ namespace Core {
             }
 
             void setLighting(Quality value) {
-            #ifdef _OS_PSP
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 lighting = LOW;
             #else
                 lighting = value;
@@ -273,7 +289,7 @@ namespace Core {
             }
 
             void setShadows(Quality value) {
-            #ifdef _OS_PSP
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 shadows = LOW;
             #else
                 shadows = value;
@@ -281,7 +297,7 @@ namespace Core {
             }
 
             void setWater(Quality value) {
-            #ifdef _OS_PSP
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 water = LOW;
             #else
                 if (value > LOW && !(support.texFloat || support.texHalf))
@@ -335,6 +351,14 @@ namespace Core {
     }
 }
 
+#ifdef VR_SUPPORT
+extern void osToggleVR(bool enable);
+#else
+void osToggleVR(bool enable) {
+    Core::settings.detail.stereo = Core::Settings::STEREO_OFF;
+}
+#endif
+
 #ifdef PROFILE
     struct TimingCPU {
         int &result;
@@ -381,22 +405,23 @@ namespace GAPI {
 enum RenderState {
     RS_TARGET           = 1 << 0,
     RS_VIEWPORT         = 1 << 1,
-    RS_DEPTH_TEST       = 1 << 2,
-    RS_DEPTH_WRITE      = 1 << 3,
-    RS_COLOR_WRITE_R    = 1 << 4,
-    RS_COLOR_WRITE_G    = 1 << 5,
-    RS_COLOR_WRITE_B    = 1 << 6,
-    RS_COLOR_WRITE_A    = 1 << 7,
+    RS_SCISSOR          = 1 << 2,
+    RS_DEPTH_TEST       = 1 << 3,
+    RS_DEPTH_WRITE      = 1 << 4,
+    RS_COLOR_WRITE_R    = 1 << 5,
+    RS_COLOR_WRITE_G    = 1 << 6,
+    RS_COLOR_WRITE_B    = 1 << 7,
+    RS_COLOR_WRITE_A    = 1 << 8,
     RS_COLOR_WRITE      = RS_COLOR_WRITE_R | RS_COLOR_WRITE_G | RS_COLOR_WRITE_B | RS_COLOR_WRITE_A,
-    RS_CULL_BACK        = 1 << 8,
-    RS_CULL_FRONT       = 1 << 9,
+    RS_CULL_BACK        = 1 << 9,
+    RS_CULL_FRONT       = 1 << 10,
     RS_CULL             = RS_CULL_BACK | RS_CULL_FRONT,
-    RS_BLEND_ALPHA      = 1 << 10,
-    RS_BLEND_ADD        = 1 << 11,
-    RS_BLEND_MULT       = 1 << 12,
-    RS_BLEND_PREMULT    = 1 << 13,
+    RS_BLEND_ALPHA      = 1 << 11,
+    RS_BLEND_ADD        = 1 << 12,
+    RS_BLEND_MULT       = 1 << 13,
+    RS_BLEND_PREMULT    = 1 << 14,
     RS_BLEND            = RS_BLEND_ALPHA | RS_BLEND_ADD | RS_BLEND_MULT | RS_BLEND_PREMULT,
-    RS_DISCARD          = 1 << 14,
+    RS_DISCARD          = 1 << 15,
 };
 
 // Texture image format
@@ -436,7 +461,7 @@ struct PSO {
     uint32     renderState;
 };
 
-typedef uint16 Index;
+typedef uint32 Index;
 
 struct Edge {
     Index a, b;
@@ -447,7 +472,7 @@ struct Edge {
 
 struct Vertex {
     short4 coord;      // xyz  - position, w - joint index (for entities only)
-    short4 normal;     // xyz  - vertex normal, w - unused
+    short4 normal;     // xyz  - vertex normal, w - quad(0) or triangle (1)
     short4 texCoord;   // xy   - texture coordinates, zw - trapezoid warping
     ubyte4 color;      // for non-textured geometry
     ubyte4 light;      // xyz  - color, w - use premultiplied alpha
@@ -530,7 +555,6 @@ struct MeshRange {
     /* options */ \
     E( UNDERWATER      ) \
     E( ALPHA_TEST      ) \
-    E( CLIP_PLANE      ) \
     E( OPT_AMBIENT     ) \
     E( OPT_SHADOW      ) \
     E( OPT_CONTACT     ) \
@@ -555,20 +579,10 @@ const char *UniformName[uMAX] = { SHADER_UNIFORMS(DECL_STR) };
 enum CullMode  { cmNone, cmBack,  cmFront, cmMAX };
 enum BlendMode { bmNone, bmAlpha, bmAdd, bmMult, bmPremult, bmMAX };
 
-struct Viewport {
-    int x, y, width, height;
-
-    Viewport() : x(0), y(0), width(0), height(0) {}
-    Viewport(int x, int y, int width, int height) : x(x), y(y), width(width), height(height) {}
-
-    inline bool operator == (const Viewport &vp) const { return x == vp.x && y == vp.y && width == vp.width && height == vp.height; }
-    inline bool operator != (const Viewport &vp) const { return !(*this == vp); }
-};
-
 namespace Core {
     float eye;
     Texture *eyeTex[2];
-    Viewport viewport, viewportDef;
+    short4 viewport, viewportDef, scissor;
     mat4 mModel, mView, mProj, mViewProj, mViewInv;
     mat4 mLightProj;
     Basis basis;
@@ -601,7 +615,8 @@ namespace Core {
         int32         renderState;
         uint32        targetFace;
         uint32        targetOp;
-        Viewport      viewport; // TODO: ivec4
+        short4        viewport; // x, y, width, height
+        short4        scissor;  // x, y, width, height
         vec4          material;
 
     #ifdef _GAPI_GL
@@ -663,7 +678,9 @@ namespace Core {
     } stats;
 }
 
-#ifdef _GAPI_GL
+#ifdef _GAPI_SW
+    #include "gapi/sw.h"
+#elif _GAPI_GL
     #include "gapi/gl.h"
 #elif _GAPI_D3D9
     #include "gapi/d3d9.h"
@@ -757,7 +774,6 @@ namespace Core {
         LOG("  3D   textures  : %s\n", support.tex3D         ? "true" : "false");
         LOG("  RG   textures  : %s\n", support.texRG         ? "true" : "false");
         LOG("  border color   : %s\n", support.texBorder     ? "true" : "false");
-        LOG("  clip distance  : %s\n", support.clipDist      ? "true" : "false");
         LOG("  anisotropic    : %d\n", support.maxAniso);
         LOG("  float textures : float = %s, half = %s\n", 
             support.colorFloat ? "full" : (support.texFloat ? (support.texFloatLinear ? "linear" : "nearest") : "false"),
@@ -821,6 +837,7 @@ namespace Core {
         settings.detail.simple       = false;
         settings.detail.vsync        = true;
         settings.detail.stereo       = Settings::STEREO_OFF;
+        settings.detail.scale        = Settings::SCALE_100;
         settings.audio.music         = 14;
         settings.audio.sound         = 14;
         settings.audio.reverb        = true;
@@ -998,6 +1015,14 @@ namespace Core {
             renderState &= ~RS_VIEWPORT;
         }
 
+        if (mask & RS_SCISSOR) {
+            if (scissor != active.scissor) {
+                active.scissor = scissor;
+                GAPI::setScissor(scissor);
+            }
+            renderState &= ~RS_SCISSOR;
+        }
+
         if (mask & RS_DEPTH_TEST)
             GAPI::setDepthTest((renderState & RS_DEPTH_TEST) != 0);
         
@@ -1028,13 +1053,18 @@ namespace Core {
         GAPI::setClearColor(color);
     }
 
-    void setViewport(const Viewport &vp) {
-        viewport = vp;
+    void setViewport(const short4 &v) {
+        viewport = v;
         renderState |= RS_VIEWPORT;
     }
 
     void setViewport(int x, int y, int width, int height) {
-        setViewport(Viewport(x, y, width, height));
+        setViewport(short4(x, y, width, height));
+    }
+
+    void setScissor(const short4 &s) {
+        scissor = s;
+        renderState |= RS_SCISSOR;
     }
 
     void setCullMode(CullMode mode) {
@@ -1096,6 +1126,8 @@ namespace Core {
             setViewport(viewportDef);
         else
             setViewport(0, 0, color->origWidth, color->origHeight);
+
+        setScissor(viewport);
 
         reqTarget.texture = color;
         reqTarget.op      = op;
@@ -1161,6 +1193,7 @@ namespace Core {
 
         setViewport(Core::x, Core::y, Core::width, Core::height);
         viewportDef = viewport;
+        scissor     = viewport;
 
         setCullMode(cmFront);
         setBlendMode(bmAlpha);

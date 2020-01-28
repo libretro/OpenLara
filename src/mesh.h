@@ -70,7 +70,7 @@ struct Mesh : GAPI::Mesh {
                 TR::Room::Data::Vertex &v = d.vertices[f.vertices[k]];\
                 Vertex &rv = _vertices[vCount++];\
                 rv.coord  = short4( v.pos.x,    v.pos.y,    v.pos.z,    0 );\
-                rv.normal = short4( f.normal.x, f.normal.y, f.normal.z, 0 );\
+                rv.normal = short4( f.normal.x, f.normal.y, f.normal.z, f.triangle ? 1 : 0 );\
                 rv.color  = ubyte4( 255, 255, 255, 255 );\
                 rv.light  = ubyte4( v.color.r, v.color.g, v.color.b, 255 );\
             }
@@ -166,6 +166,8 @@ struct MeshBuilder {
     struct ModelRange {
         int      parts[3][32];
         Geometry geometry[3];
+        int      vStart;
+        int      vCount;
     } *models;
 
 // procedured
@@ -260,8 +262,10 @@ struct MeshBuilder {
         }
 
     // get models info
+        int vStartModel = vCount;
         models = new ModelRange[level->modelsCount];
         for (int i = 0; i < level->modelsCount; i++) {
+            models[i].vStart = vCount;
             TR::Model &model = level->models[i];
             for (int j = 0; j < model.mCount; j++) {
                 int index = level->meshOffsets[model.mStart + j];
@@ -271,6 +275,8 @@ struct MeshBuilder {
                 iCount += (mesh.rCount * 6 + mesh.tCount * 3) * DOUBLE_SIDED;
                 vCount += (mesh.rCount * 4 + mesh.tCount * 3);
             }
+            models[i].vCount = vCount - models[i].vStart;
+            models[i].vStart -= vStartModel;
         }
 
     // shadow blob mesh (8 triangles, 8 vertices)
@@ -381,12 +387,11 @@ struct MeshBuilder {
         ASSERT(vCount - vStartRoom <= 0xFFFF);
 
     // build models geometry
-        int vStartModel = vCount;
+        vStartModel = vCount;
         aCount++;
 
         for (int i = 0; i < level->modelsCount; i++) {
             TR::Model &model = level->models[i];
-
             int vCountStart = vCount;
 
             for (int transp = 0; transp < 3; transp++) {
@@ -442,7 +447,11 @@ struct MeshBuilder {
                 }
             }
         }
-        ASSERT(vCount - vStartModel <= 0xFFFF);
+
+        weldSkinJoints(vertices + vStartModel, level->extra.laraSkin, level->extra.laraJoints);
+        weldSkinJoints(vertices + vStartModel, level->extra.braid,    level->extra.braid);
+
+        //ASSERT(vCount - vStartModel <= 0xFFFF);
 
     // build common primitives
         int vStartCommon = vCount;
@@ -453,7 +462,7 @@ struct MeshBuilder {
         shadowBlob.iCount = 8 * 3 * 3;
         for (int i = 0; i < 9; i++) {
             Vertex &v0 = vertices[vCount + i * 2 + 0];
-            v0.normal    = short4( 0, -1, 0, 32767 );
+            v0.normal    = short4( 0, -1, 0, 1 );
             v0.texCoord  = short4( whiteObject.texCoordAtlas[0].x, whiteObject.texCoordAtlas[0].y, 32767, 32767 );
             v0.color     = v0.light = ubyte4( 0, 0, 0, 0 );
 
@@ -500,9 +509,9 @@ struct MeshBuilder {
 
         addQuad(indices, iCount, vCount, vStartCommon, vertices, &whiteSprite, false, false);
         vertices[vCount + 0].coord = short4( -32767,  32767, 0, 1 );
-        vertices[vCount + 1].coord = short4(  32767,  32767, 1, 1 );
-        vertices[vCount + 2].coord = short4(  32767, -32767, 1, 0 );
-        vertices[vCount + 3].coord = short4( -32767, -32767, 0, 0 );
+        vertices[vCount + 1].coord = short4(  32767,  32767, 0, 1 );
+        vertices[vCount + 2].coord = short4(  32767, -32767, 0, 1 );
+        vertices[vCount + 3].coord = short4( -32767, -32767, 0, 1 );
 
         vertices[vCount + 0].texCoord = short4(     0,  32767, 0, 0 );
         vertices[vCount + 1].texCoord = short4( 32767,  32767, 0, 0 );
@@ -528,8 +537,8 @@ struct MeshBuilder {
         for (int i = 0; i < CIRCLE_SEGS; i++) {
             Vertex &v = vertices[vCount + i];
             pos.rotate(cs);
-            v.coord     = short4( short(pos.x), short(pos.y), 0, 0 );
-            v.normal    = short4( 0, 0, 0, 32767 );
+            v.coord     = short4( short(pos.x), short(pos.y), 0, 1 );
+            v.normal    = short4( 0, 0, 0, 1 );
             v.texCoord  = short4( whiteSprite.texCoordAtlas[0].x, whiteSprite.texCoordAtlas[0].y, 32767, 32767 );
             v.color     = ubyte4( 255, 255, 255, 255 );
             v.light     = ubyte4( 255, 255, 255, 255 );
@@ -539,7 +548,7 @@ struct MeshBuilder {
             indices[iCount++] = baseIdx + CIRCLE_SEGS;
         }
         vertices[vCount + CIRCLE_SEGS] = vertices[vCount];
-        vertices[vCount + CIRCLE_SEGS].coord = short4( 0, 0, 0, 0 );
+        vertices[vCount + CIRCLE_SEGS].coord = short4( 0, 0, 0, 1 );
         vCount += CIRCLE_SEGS + 1;
 
     // box
@@ -555,7 +564,7 @@ struct MeshBuilder {
         for (int i = 0; i < COUNT(boxCoords); i++) {
             Vertex &v = vertices[vCount++];
             v.coord    = boxCoords[i];
-            v.normal   = short4(0, 0, 0, 32767);
+            v.normal   = short4(0, 0, 0, 0);
             v.texCoord = short4(0, 0, 0, 0);
             v.color    = ubyte4(255, 255, 255, 255);
             v.light    = ubyte4(255, 255, 255, 255);
@@ -570,7 +579,7 @@ struct MeshBuilder {
         baseIdx = vCount - vStartCommon;
         for (int16 j = -PLANE_DETAIL; j <= PLANE_DETAIL; j++)
             for (int16 i = -PLANE_DETAIL; i <= PLANE_DETAIL; i++) {
-                vertices[vCount++].coord = short4( i, j, 0, 0 );
+                vertices[vCount++].coord = short4( i, j, 0, 1 );
                 if (j < PLANE_DETAIL && i < PLANE_DETAIL) {
                     int idx = baseIdx + (j + PLANE_DETAIL) * (PLANE_DETAIL * 2 + 1) + i + PLANE_DETAIL;
                     indices[iCount + 0] = idx + PLANE_DETAIL * 2 + 1;
@@ -686,6 +695,68 @@ struct MeshBuilder {
                 return true;
         }
         return false;
+    }
+
+    void weldSkinJoints(Vertex *vertices, int16 skinIndex, int16 jointsIndex) {
+        if (skinIndex == -1 || jointsIndex == -1) {
+            return;
+        }
+
+        ASSERT(level->models[skinIndex].mCount == level->models[jointsIndex].mCount);
+
+        const TR::Model *model = level->models + skinIndex;
+        const TR::Node  *node  = (TR::Node*)&level->nodesData[model->node];//(TR::Node*)level->nodesData + model->node;
+
+        int sIndex = 0;
+        short4 stack[16];
+        short4 pos(0, 0, 0, 0);
+        short4 jointsPos[MAX_JOINTS];
+
+        for (int i = 0; i < model->mCount; i++) {
+            if (i > 0 && node) {
+                const TR::Node &t = node[i - 1];
+                if (t.flags & 0x01) pos = stack[--sIndex];
+                if (t.flags & 0x02) stack[sIndex++] = pos;
+                pos.x += t.x;
+                pos.y += t.y;
+                pos.z += t.z;
+            }
+            jointsPos[i] = pos;
+        }
+
+        const ModelRange &rangeSkin   = models[skinIndex];
+        const ModelRange &rangeJoints = models[jointsIndex];
+
+        #define COORD_FILL(VAR,RANGE)\
+            short4 *VAR = new short4[RANGE.vCount];\
+            for (int i = 0; i < RANGE.vCount; i++) {\
+                VAR[i] = vertices[RANGE.vStart + i].coord;\
+                VAR[i].x += jointsPos[VAR[i].w].x;\
+                VAR[i].y += jointsPos[VAR[i].w].y;\
+                VAR[i].z += jointsPos[VAR[i].w].z;\
+            }
+
+        COORD_FILL(vSkin,   rangeSkin);
+        COORD_FILL(vJoints, rangeJoints);
+
+        // bruteforce :(
+        for (int j = 0; j < rangeJoints.vCount; j++) {
+            for (int i = 0; i < rangeSkin.vCount; i++) {
+                if (//vSkin[i].w < vJoints[j].w &&
+                    abs(vSkin[i].x - vJoints[j].x) <= 1 &&
+                    abs(vSkin[i].y - vJoints[j].y) <= 1 &&
+                    abs(vSkin[i].z - vJoints[j].z) <= 1) { // compare position
+                    vertices[rangeJoints.vStart + j].coord  = vertices[rangeSkin.vStart + i].coord; // set bone index
+                    vertices[rangeJoints.vStart + j].normal = vertices[rangeSkin.vStart + i].normal;
+                    break;
+                }
+            }
+        }
+
+        delete[] vSkin;
+        delete[] vJoints;
+
+        #undef COORD_FILL
     }
 
     int calcWaterLevel(int16 roomIndex, bool flip) {
@@ -995,6 +1066,10 @@ struct MeshBuilder {
 
             int texAttrib = forceOpaque ? 0 : t.attribute;
 
+            if (f.effects.additive) {
+                texAttrib = 2;
+            }
+
             if (texAttrib != 0)
                 isOpaque = false;
 
@@ -1017,9 +1092,9 @@ struct MeshBuilder {
 
                 vertices[vCount].coord  = transform(v.coord, joint, x, y, z, dir);
                 vec3 n = vec3(v.normal.x, v.normal.y, v.normal.z).normal() * 32767.0f;
-                v.normal = short4(short(n.x), short(n.y), short(n.z), 0);
+                v.normal = short4(short(n.x), short(n.y), short(n.z), f.triangle ? 1 : 0);
                 vertices[vCount].normal = rotate(v.normal, dir);
-                vertices[vCount].color  = ubyte4( c.r, c.g, c.b, 255 );
+                vertices[vCount].color  = ubyte4( c.r, c.g, c.b, c.a );
                 vertices[vCount].light  = ubyte4( light.r, light.g, light.b, 255 );
 
                 vCount++;
@@ -1285,16 +1360,17 @@ struct MeshBuilder {
         int16 minY = int16(pos.y);
         int16 maxX = int16(size.x) + minX;
         int16 maxY = int16(size.y) + minY;
+        int16 s    = 1;
 
-        vertices[vCount + 0].coord = short4( minX, minY, 0, 1 );
-        vertices[vCount + 1].coord = short4( maxX, minY, 0, 1 );
-        vertices[vCount + 2].coord = short4( maxX, int16(minY + 1), 0, 1 );
-        vertices[vCount + 3].coord = short4( minX, int16(minY + 1), 0, 1 );
+        vertices[vCount + 0].coord = short4( minX - s, minY - s, 0, 1 );
+        vertices[vCount + 1].coord = short4( maxX + s, minY - s, 0, 1 );
+        vertices[vCount + 2].coord = short4( maxX + s, minY + s, 0, 1 );
+        vertices[vCount + 3].coord = short4( minX - s, minY + s, 0, 1 );
 
-        vertices[vCount + 4].coord = short4( minX, minY, 0, 1 );
-        vertices[vCount + 5].coord = short4( int16(minX + 1), minY, 0, 1 );
-        vertices[vCount + 6].coord = short4( int16(minX + 1), maxY, 0, 1 );
-        vertices[vCount + 7].coord = short4( minX, maxY, 0, 1 );
+        vertices[vCount + 4].coord = short4( minX - s, minY - s, 0, 1 );
+        vertices[vCount + 5].coord = short4( minX + s, minY - s, 0, 1 );
+        vertices[vCount + 6].coord = short4( minX + s, maxY + s, 0, 1 );
+        vertices[vCount + 7].coord = short4( minX - s, maxY + s, 0, 1 );
 
         for (int i = 0; i < 8; i++) {
             Vertex &v = vertices[vCount + i];
@@ -1306,15 +1382,15 @@ struct MeshBuilder {
         addQuad(indices, iCount, vCount, 0, vertices, NULL, false, false); vCount += 4;
         addQuad(indices, iCount, vCount, 0, vertices, NULL, false, false); vCount += 4;
 
-        vertices[vCount + 0].coord = short4( minX, int16(maxY - 1), 0, 1 );
-        vertices[vCount + 1].coord = short4( maxX, int16(maxY - 1), 0, 1 );
-        vertices[vCount + 2].coord = short4( maxX, maxY, 0, 1 );
-        vertices[vCount + 3].coord = short4( minX, maxY, 0, 1 );
+        vertices[vCount + 0].coord = short4( minX + s, maxY - s, 0, 1 );
+        vertices[vCount + 1].coord = short4( maxX + s, maxY - s, 0, 1 );
+        vertices[vCount + 2].coord = short4( maxX + s, maxY + s, 0, 1 );
+        vertices[vCount + 3].coord = short4( minX + s, maxY + s, 0, 1 );
 
-        vertices[vCount + 4].coord = short4( int16(maxX - 1), minY, 0, 1 );
-        vertices[vCount + 5].coord = short4( maxX, minY, 0, 1 );
-        vertices[vCount + 6].coord = short4( maxX, maxY, 0, 1 );
-        vertices[vCount + 7].coord = short4( int16(maxX - 1), maxY, 0, 1 );
+        vertices[vCount + 4].coord = short4( maxX - s, minY + s, 0, 1 );
+        vertices[vCount + 5].coord = short4( maxX + s, minY + s, 0, 1 );
+        vertices[vCount + 6].coord = short4( maxX + s, maxY + s, 0, 1 );
+        vertices[vCount + 7].coord = short4( maxX - s, maxY + s, 0, 1 );
 
         for (int i = 0; i < 8; i++) {
             Vertex &v = vertices[vCount + i];
@@ -1328,8 +1404,7 @@ struct MeshBuilder {
     }
     
     void renderBuffer(Index *indices, int iCount, Vertex *vertices, int vCount) {
-        if (!iCount) return;
-        ASSERT(vCount > 0);
+        if (iCount <= 0) return;
 
         dynRange.iStart = 0;
         dynRange.iCount = iCount;
@@ -1450,7 +1525,8 @@ struct MeshBuilder {
         TR::Room::Data &d = level->rooms[roomIndex].data;
         for (int j = 0; j < d.sCount; j++) {
             TR::Room::Data::Sprite &f = d.sprites[j];
-            addDynSprite(f.texture, d.vertices[f.vertexIndex].pos, COLOR_WHITE, COLOR_WHITE);
+            TR::Room::Data::Vertex &v = d.vertices[f.vertexIndex];
+            addDynSprite(f.texture, d.vertices[f.vertexIndex].pos, false, false, v.color, v.color);
         }
 
         dynEnd();

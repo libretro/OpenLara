@@ -6,26 +6,23 @@
 #include "controller.h"
 #include "camera.h"
 
-#define NO_CLIP_PLANE  1000000.0f
+#define NO_WATER_HEIGHT  1000000.0f
 
 #if defined(_OS_IOS) || defined(_GAPI_D3D9) || defined(_GAPI_GXM)
     #define USE_SCREEN_TEX
 #endif
 
 struct ShaderCache {
-    enum Effect { FX_NONE = 0, FX_UNDERWATER = 1, FX_ALPHA_TEST = 2, FX_CLIP_PLANE = 4 };
+    enum Effect { FX_NONE = 0, FX_UNDERWATER = 1, FX_ALPHA_TEST = 2 };
 
-    Shader *shaders[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST | FX_CLIP_PLANE) + 1];
-    PSO    *pso[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST | FX_CLIP_PLANE) + 1][bmMAX];
+    Shader *shaders[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST) + 1];
+    PSO    *pso[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST) + 1][bmMAX];
 
     ShaderCache() {
         memset(shaders, 0, sizeof(shaders));
 
         LOG("shader: cache warm-up...\n");
         prepareCompose(FX_NONE);
-        if (Core::settings.detail.water > Core::Settings::LOW && !Core::support.clipDist)
-            prepareCompose(FX_CLIP_PLANE);
-
         prepareAmbient(FX_NONE);
 
         if (Core::settings.detail.shadows > Core::Settings::LOW)
@@ -155,8 +152,6 @@ struct ShaderCache {
                 if (fx & FX_ALPHA_TEST) SD_ADD(ALPHA_TEST);
 
                 if (pass == Core::passCompose) {
-                    if (fx & FX_CLIP_PLANE)
-                        SD_ADD(CLIP_PLANE);
                     if (Core::settings.detail.lighting > Core::Settings::MEDIUM && (type == Shader::ENTITY))
                         SD_ADD(OPT_AMBIENT);
                     if (Core::settings.detail.shadows  > Core::Settings::LOW && (type == Shader::ENTITY || type == Shader::ROOM))
@@ -195,9 +190,6 @@ struct ShaderCache {
 
     void bind(Core::Pass pass, Shader::Type type, int fx) {
         Core::pass = pass;
-
-        if (Core::support.clipDist)
-            fx &= ~ShaderCache::FX_CLIP_PLANE;
 
         Shader *shader = getShader(pass, type, fx);
         if (shader) {
@@ -802,8 +794,8 @@ struct WaterCache {
 
 
     Texture* getScreenTex() {
-        int w = Core::viewportDef.width;
-        int h = Core::viewportDef.height;
+        int w = Core::viewportDef.z;
+        int h = Core::viewportDef.w;
     // get refraction texture
         if (!refract || w != refract->origWidth || h != refract->origHeight) {
             PROFILE_MARKER("WATER_REFRACT_INIT");
@@ -837,7 +829,7 @@ struct WaterCache {
             blitTexture(screen, flip);
             Core::setTarget(screen, NULL, RT_LOAD_COLOR | RT_LOAD_DEPTH | RT_STORE_COLOR);
         } else {
-            Core::copyTarget(refract, 0, 0, x, y, Core::viewportDef.width, Core::viewportDef.height); // copy framebuffer into refraction texture
+            Core::copyTarget(refract, 0, 0, x, y, Core::viewportDef.z, Core::viewportDef.w); // copy framebuffer into refraction texture
         }
     }
 
@@ -878,7 +870,7 @@ struct WaterCache {
         game->setupBinding();
 
     // merge visible rooms for all items
-        int roomsList[256];
+        RoomDesc roomsList[256];
         int roomsCount = 0;
 
         for (int i = 0; i < level->roomsCount; i++)
@@ -916,18 +908,14 @@ struct WaterCache {
             }
 
             float waterLevel = items[waterItem].pos.y;
-
-            reflectPlane = vec4(0, 1, 0, -waterLevel);
+            float sign = underwater ? -1.0f : 1.0f;
+            reflectPlane = vec4(0.0f, -1.0f, 0.0f, waterLevel) * sign;
             camera->reflectPlane = &reflectPlane;
             camera->setup(true);
 
         // render reflections frame
-            float sign = underwater ? -1.0f : 1.0f;
-            game->setClipParams(sign, waterLevel * sign);
             game->renderView(TR::NO_ROOM, false, false, roomsCount, roomsList);
         }
-
-        game->setClipParams(1.0f, NO_CLIP_PLANE);
 
         camera->reflectPlane = NULL;
         camera->setup(true);

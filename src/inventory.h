@@ -133,12 +133,13 @@ static const OptionItem optDetail[] = {
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_SHADOWS,  SETTINGS( detail.shadows   ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_WATER,    SETTINGS( detail.water     ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_SIMPLE_ITEMS,    SETTINGS( detail.simple    ), STR_OFF, 0, 1 ),
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_RESOLUTION,      SETTINGS( detail.scale     ), STR_SCALE_100, 0, 3 ),
 #if !defined(__LIBRETRO__) && (defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_PSP) || defined(_OS_RPI) || defined(_OS_PSV))
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_VSYNC,    SETTINGS( detail.vsync     ), STR_OFF, 0, 1 ),
 #endif
 #if !defined(_OS_PSP) && !defined(_OS_PSV) && !defined(_OS_3DS)
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_STEREO,   SETTINGS( detail.stereo    ), STR_NO_STEREO, 0, 
-    #if /*defined(_OS_WIN) ||*/ defined(_OS_ANDROID)
+    #if defined(_OS_WIN) || defined(_OS_ANDROID)
         4 /* with VR option */
     #else
         3 /* without VR support */
@@ -156,23 +157,45 @@ static const OptionItem optSound[] = {
     OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY,         SETTINGS( audio.sound     ), 0xFFFF8000, 102, SND_MAX_VOLUME, true ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_REVERBERATION, SETTINGS( audio.reverb    ), STR_OFF, 0, 1 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_SUBTITLES, SETTINGS( audio.subtitles ), STR_OFF, 0, 1 ),
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_LANGUAGE,  SETTINGS( audio.language  ), STR_LANG_EN, 0, 10 ),
+#ifndef FFP
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_LANGUAGE,  SETTINGS( audio.language  ), STR_LANG_EN, 0, 11/*TODO: sizeof(LANG_PREFIXES)*/ ),
+#endif
 };
+
+#if defined(_OS_CLOVER) || defined(_OS_PSC)
+    #define INV_GAMEPAD_ONLY
+#endif
+
+#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS)
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_ONLY
+    #define INV_CTRL_START_OPTION 1
+#else
+    #define INV_CTRL_START_OPTION 2
+#endif
+
+#if defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_RPI)
+    #define INV_VIBRATION
+#endif
 
 static const OptionItem optControls[] = {
     OptionItem( OptionItem::TYPE_TITLE,  STR_SET_CONTROLS ),
     OptionItem( ),
-    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY,                SETTINGS( playerIndex                    ), STR_PLAYER_1,  0, 1 ),
-#ifndef _OS_CLOVER
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_GAMEPAD, SETTINGS( controls[0].joyIndex           ), STR_GAMEPAD_1, 0, 3 ),
+#ifndef INV_SINGLE_PLAYER
+    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( playerIndex                    ), STR_PLAYER_1,  0, 1 ),
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_GAMEPAD    , SETTINGS( controls[0].joyIndex           ), STR_GAMEPAD_1, 0, 3 ),
 #endif
-#if defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_RPI)
+#ifdef INV_VIBRATION
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_VIBRATION  , SETTINGS( controls[0].vibration          ), STR_OFF,       0, 1 ),
 #endif
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_RETARGET   , SETTINGS( controls[0].retarget           ), STR_OFF,       0, 1 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_MULTIAIM   , SETTINGS( controls[0].multiaim           ), STR_OFF,       0, 1 ),
 #ifndef __LIBRETRO__
+#ifdef INV_GAMEPAD_ONLY
+    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( playerIndex                    ), STR_OPT_CONTROLS_GAMEPAD,  0, 0 ),
+#else
     OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( ctrlIndex                      ), STR_OPT_CONTROLS_KEYBOARD, 0, 1 ),
+#endif
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cUp        , SETTINGS( controls[0].keys[ cUp        ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cDown      , SETTINGS( controls[0].keys[ cDown      ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cRight     , SETTINGS( controls[0].keys[ cRight     ] ), STR_KEY_FIRST ),
@@ -405,13 +428,12 @@ struct Inventory {
                 case TR::Entity::INV_SOUND :
                     optCount = COUNT(optSound);
                     return optSound;
-                case TR::Entity::INV_CONTROLS :
-                    ASSERT(optControls[2].offset == SETTINGS( playerIndex) );
+                case TR::Entity::INV_CONTROLS : {
                     for (int i = 0; i < COUNT(optControls); i++) {
                         OptionItem &opt = optControlsPlayer[i];
                         opt = optControls[i];
 
-                        if (i > 2 && opt.offset != SETTINGS( playerIndex ) && opt.offset != SETTINGS( ctrlIndex ) )
+                        if (i > INV_CTRL_START_OPTION && opt.offset != SETTINGS( playerIndex ) && opt.offset != SETTINGS( ctrlIndex ) )
                             opt.offset += sizeof(Core::Settings::Controls) * Core::settings.playerIndex;
 
                         if (opt.type == OptionItem::TYPE_KEY) {
@@ -424,6 +446,7 @@ struct Inventory {
                     }
                     optCount = COUNT(optControlsPlayer);
                     return optControlsPlayer;
+                }
                 default :
                     optCount = 0;
                     return NULL;
@@ -526,7 +549,7 @@ struct Inventory {
 
             TR::Level *level = game->getLevel();
             TR::Model &m     = level->models[desc.model];
-            Basis joints[MAX_SPHERES];
+            Basis joints[MAX_JOINTS];
 
             mat4 matrix;
             matrix.identity();
@@ -969,7 +992,11 @@ struct Inventory {
             }
             case TR::Entity::INV_CONTROLS :
                 Core::settings.playerIndex = 0;
-                Core::settings.ctrlIndex   = 0;
+                #ifdef INV_GAMEPAD_ONLY
+                    Core::settings.ctrlIndex = 1;
+                #else
+                    Core::settings.ctrlIndex = 0;
+                #endif
                 break;
             case TR::Entity::INV_DETAIL :
                 settings = Core::settings;
@@ -1191,7 +1218,7 @@ struct Inventory {
             if (Input::lastState[playerIndex] == cLeft || Input::lastState[playerIndex] == cRight)
                 slot ^= 1;
 
-            if (Input::lastState[playerIndex] == cAction) {
+            if (key == cAction) {
                 if (slot == 1) {
                     if (index > -1) {
                         TR::Entity &e = game->getLevel()->entities[index];
@@ -1236,8 +1263,11 @@ struct Inventory {
                         newKey = Input::lastKey;
                     } else {
                         JoyKey jk = Input::joy[Core::settings.controls[Core::settings.playerIndex].joyIndex].lastKey;
-                        if (Core::settings.ctrlIndex == 1 && jk != jkNone)
+                        if (Core::settings.ctrlIndex == 1 && jk != jkNone) {
                             newKey = jk;
+                        } else if (Input::lastKey != ikNone) {
+                            waitForKey = NULL;
+                        }
                     }
 
                     if (newKey != -1) {
@@ -1399,11 +1429,11 @@ struct Inventory {
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
             return;
 
-        #ifdef _OS_PSP
+        #ifdef _GAPI_GU
             return;
         #endif
 
-        #ifdef _OS_3DS
+        #ifdef _GAPI_C3D
             return;
         #endif
 
@@ -1810,7 +1840,7 @@ struct Inventory {
         m.identity();
         Core::setViewProj(m, m);
         Core::mModel.identity();
-        Core::mModel.scale(vec3(1.0f / 32767.0f));
+
     #else
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR || !background[0]) {
             backTex = Core::blackTex; // black background 
@@ -1960,10 +1990,12 @@ struct Inventory {
         char buf[256];
         char time[16];
 
-        int secretsMax = 3;
-        int secrets = ((saveStats.secrets & 1) != 0) +
-                      ((saveStats.secrets & 2) != 0) +
-                      ((saveStats.secrets & 4) != 0);
+        int secretsMax = TR::LEVEL_INFO[saveStats.level].secrets;
+        int secrets = ((saveStats.secrets & (1 << 0)) != 0) +
+                      ((saveStats.secrets & (1 << 1)) != 0) +
+                      ((saveStats.secrets & (1 << 2)) != 0) + 
+                      ((saveStats.secrets & (1 << 3)) != 0) + 
+                      ((saveStats.secrets & (1 << 4)) != 0);
 
         int s = saveStats.time % 60;
         int m = saveStats.time / 60 % 60;
@@ -2000,7 +2032,7 @@ struct Inventory {
         if (page == PAGE_SAVEGAME) {
             UI::renderBar(CTEX_OPTION, vec2(UI::width / 2 - 120, 240 - 14), vec2(240, LINE_HEIGHT - 6), 1.0f, 0x802288FF, 0, 0, 0);
             UI::textOut(vec2(0, 240), pageTitle[page], UI::aCenter, UI::width);
-            UI::renderBar(CTEX_OPTION, vec2(slot + UI::width / 2 - 48, 240 + 24 - 16), vec2(48, 18), 1.0f, 0xFFD8377C, 0);
+            UI::renderBar(CTEX_OPTION, vec2(-slot * 48 + UI::width / 2, 240 + 24 - 16), vec2(48, 18), 1.0f, 0xFFD8377C, 0);
             UI::textOut(vec2(UI::width / 2 - 48, 240 + 24), STR_YES, UI::aCenter, 48);
             UI::textOut(vec2(UI::width / 2, 240 + 24), STR_NO, UI::aCenter, 48);
             return;

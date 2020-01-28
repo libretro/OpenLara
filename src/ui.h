@@ -312,9 +312,9 @@ namespace UI {
     }
 
     void textOut(const vec2 &pos, const char *text, Align align = aLeft, float width = 0, uint8 alpha = 255, ShadeType shade = SHADE_ORANGE, bool isShadow = false) {
-        if (!text) return;
-       
         TR::Level *level = game->getLevel();
+
+        if (!text || level->extra.glyphs == -1) return;
 
         if (shade && !isShadow && ((level->version & TR::VER_TR3)))
             textOut(pos + vec2(1, 1), text, align, width, alpha, shade, true);
@@ -510,6 +510,10 @@ namespace UI {
 
     void specOut(const vec2 &pos, char specChar) {
         TR::Level *level = game->getLevel();
+
+        if (level->extra.glyphs == -1)
+            return;
+
         MeshBuilder *mesh = game->getMesh();
 
         int seq = level->extra.glyphs;
@@ -791,7 +795,7 @@ namespace UI {
         vec3 lightOffset = vec3(UI::width - 64.0f, UI::height - 64.0f, 2048.0f);
         setupInventoryShading(lightOffset);
 
-        Basis joints[MAX_SPHERES];
+        Basis joints[MAX_JOINTS];
 
         Core::setDepthTest(true);
         Core::setDepthWrite(true);
