@@ -1,7 +1,7 @@
 /* Copyright  (C) 2010-2020 The RetroArch team
  *
  * ---------------------------------------------------------------------------------------
- * The following license statement only applies to this file (strcasestr.h).
+ * The following license statement only applies to this file (fopen_utf8.c).
  * ---------------------------------------------------------------------------------------
  *
  * Permission is hereby granted, free of charge,
@@ -20,37 +20,45 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef __LIBRETRO_SDK_COMPAT_STRCASESTR_H
-#define __LIBRETRO_SDK_COMPAT_STRCASESTR_H
+#include <compat/fopen_utf8.h>
+#include <encodings/utf.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-#include <string.h>
-
-#if defined(RARCH_INTERNAL) && defined(HAVE_CONFIG_H)
-#include "../../../config.h"
+#if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0500 || defined(_XBOX)
+#ifndef LEGACY_WIN32
+#define LEGACY_WIN32
+#endif
 #endif
 
-#ifndef HAVE_STRCASESTR
+#ifdef _WIN32
+#undef fopen
 
-#include <retro_common_api.h>
-
-RETRO_BEGIN_DECLS
-
-/* Avoid possible naming collisions during link
- * since we prefer to use the actual name. */
-#define strcasestr(haystack, needle) strcasestr_retro__(haystack, needle)
-
-/**
- * Portable reimplementation of \c strcasestr(3).
- * If the original function is available
- * (as determined by the presence of \c HAVE_STRCASESTR),
- * it will be used instead.
- *
- * @see https://man7.org/linux/man-pages/man3/strstr.3.html
- */
-char *strcasestr(const char *haystack, const char *needle);
-
-RETRO_END_DECLS
-
+void *fopen_utf8(const char * filename, const char * mode)
+{
+#if defined(LEGACY_WIN32)
+   char * filename_local = utf8_to_local_string_alloc(filename);
+   if (filename_local)
+   {
+      FILE *ret          = fopen(filename_local, mode);
+      free(filename_local);
+      return ret;
+   }
+#else
+   wchar_t * filename_w  = utf8_to_utf16_string_alloc(filename);
+   if (filename_w)
+   {
+      FILE    *ret       = NULL;
+      wchar_t *mode_w    = utf8_to_utf16_string_alloc(mode);
+      if (mode_w)
+      {
+         ret             = _wfopen(filename_w, mode_w);
+         free(mode_w);
+      }
+      free(filename_w);
+      return ret;
+   }
 #endif
-
+   return NULL;
+}
 #endif

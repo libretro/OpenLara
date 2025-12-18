@@ -1,7 +1,7 @@
 /* Copyright  (C) 2010-2020 The RetroArch team
  *
  * ---------------------------------------------------------------------------------------
- * The following license statement only applies to this file (strcasestr.h).
+ * The following license statement only applies to this file (rtime.h).
  * ---------------------------------------------------------------------------------------
  *
  * Permission is hereby granted, free of charge,
@@ -20,37 +20,44 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef __LIBRETRO_SDK_COMPAT_STRCASESTR_H
-#define __LIBRETRO_SDK_COMPAT_STRCASESTR_H
-
-#include <string.h>
-
-#if defined(RARCH_INTERNAL) && defined(HAVE_CONFIG_H)
-#include "../../../config.h"
-#endif
-
-#ifndef HAVE_STRCASESTR
+#ifndef __LIBRETRO_SDK_RTIME_H__
+#define __LIBRETRO_SDK_RTIME_H__
 
 #include <retro_common_api.h>
 
+#include <stdint.h>
+#include <stddef.h>
+#include <time.h>
+
 RETRO_BEGIN_DECLS
 
-/* Avoid possible naming collisions during link
- * since we prefer to use the actual name. */
-#define strcasestr(haystack, needle) strcasestr_retro__(haystack, needle)
+/* TODO/FIXME: Move all generic time handling functions
+ * to this file */
 
 /**
- * Portable reimplementation of \c strcasestr(3).
- * If the original function is available
- * (as determined by the presence of \c HAVE_STRCASESTR),
- * it will be used instead.
- *
- * @see https://man7.org/linux/man-pages/man3/strstr.3.html
+ * Must be called before using \c rtime_localtime().
+ * May be called multiple times without ill effects,
+ * but must only be called from the main thread.
  */
-char *strcasestr(const char *haystack, const char *needle);
+void rtime_init(void);
+
+/**
+ * Must be called upon program or core termination.
+ * May be called multiple times without ill effects,
+ * but must only be called from the main thread.
+ */
+void rtime_deinit(void);
+
+/**
+ * Thread-safe wrapper around standard \c localtime(),
+ * which by itself is not guaranteed to be thread-safe.
+ * @param timep Pointer to a time_t object to convert.
+ * @param result Pointer to a tm object to store the result in.
+ * @return \c result.
+ * @see https://en.cppreference.com/w/c/chrono/localtime
+ */
+struct tm *rtime_localtime(const time_t *timep, struct tm *result);
 
 RETRO_END_DECLS
-
-#endif
 
 #endif

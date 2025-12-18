@@ -1,7 +1,7 @@
-/* Copyright  (C) 2010-2020 The RetroArch team
+/* Copyright (C) 2010-2020 The RetroArch team
  *
  * ---------------------------------------------------------------------------------------
- * The following license statement only applies to this file (strcasestr.h).
+ * The following license statement only applies to this libretro SDK code part (glsym).
  * ---------------------------------------------------------------------------------------
  *
  * Permission is hereby granted, free of charge,
@@ -20,37 +20,57 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef __LIBRETRO_SDK_COMPAT_STRCASESTR_H
-#define __LIBRETRO_SDK_COMPAT_STRCASESTR_H
+#ifndef RGLGEN_PRIVATE_HEADERS_H__
+#define RGLGEN_PRIVATE_HEADERS_H__
 
-#include <string.h>
+#if defined(IOS)
 
-#if defined(RARCH_INTERNAL) && defined(HAVE_CONFIG_H)
-#include "../../../config.h"
+#if defined(HAVE_OPENGLES3)
+#include <OpenGLES/ES3/gl.h>
+#include <OpenGLES/ES3/glext.h>
+#else
+#include <OpenGLES/ES2/gl.h>
+#include <OpenGLES/ES2/glext.h>
 #endif
 
-#ifndef HAVE_STRCASESTR
-
-#include <retro_common_api.h>
-
-RETRO_BEGIN_DECLS
-
-/* Avoid possible naming collisions during link
- * since we prefer to use the actual name. */
-#define strcasestr(haystack, needle) strcasestr_retro__(haystack, needle)
-
-/**
- * Portable reimplementation of \c strcasestr(3).
- * If the original function is available
- * (as determined by the presence of \c HAVE_STRCASESTR),
- * it will be used instead.
- *
- * @see https://man7.org/linux/man-pages/man3/strstr.3.html
- */
-char *strcasestr(const char *haystack, const char *needle);
-
-RETRO_END_DECLS
-
+#elif defined(__APPLE__)
+#include <compat/apple_compat.h>
+#if MAC_OS_X_VERSION_10_7
+#include <OpenGL/gl3.h>
+#include <OpenGL/gl3ext.h>
+#else
+#include <OpenGL/gl.h>
+#include <OpenGL/glext.h>
+#endif
+#elif defined(HAVE_PSGL)
+#include <PSGL/psgl.h>
+#include <GLES/glext.h>
+#elif defined(HAVE_OPENGL_MODERN)
+#include <GL3/gl3.h>
+#include <GL3/gl3ext.h>
+#elif defined(HAVE_OPENGLES3)
+#include <GLES3/gl3.h>
+#define __gl2_h_
+#include <GLES2/gl2ext.h>
+#elif defined(HAVE_OPENGLES2)
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+#elif defined(HAVE_OPENGLES1)
+#include <GLES/gl.h>
+#include <GLES/glext.h>
+#else
+#if defined(_WIN32) && !defined(_XBOX)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+#ifndef HAVE_LIBNX
+#include <GL/gl.h>
+#include <GL/glext.h>
+#else
+/* We need to avoid including <GL/gl.h> on this platform */
+#include "switch/nx_gl.h"
+#include <GL/glext.h>
+#endif /* SWITCH */
 #endif
 
 #endif
