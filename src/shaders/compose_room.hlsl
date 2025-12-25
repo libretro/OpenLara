@@ -1,6 +1,10 @@
 #include "common.hlsl"
 
-// ALPHA_TEST, UNDERWATER, CLIP_PLANE (D3D9 only), OPT_SHADOW, OPT_CAUSTICS, OPT_CONTACT
+// ALPHA_TEST, UNDERWATER, OPT_SHADOW, OPT_CAUSTICS, OPT_CONTACT
+
+#ifdef _GAPI_D3D11_9_3
+	#define MONOCHROME_AMBIENT
+#endif
 
 struct VS_OUTPUT {
 	float4 pos       : POSITION;
@@ -8,14 +12,16 @@ struct VS_OUTPUT {
 	float4 texCoord  : TEXCOORD1;
 	float4 normal    : TEXCOORD2;
 	float4 diffuse   : TEXCOORD3;
-	float3 ambient   : TEXCOORD4;
-	float3 lightMap  : TEXCOORD5;
-	float4 light     : TEXCOORD6;
-	float4 lightProj : TEXCOORD7;
-#ifdef _GAPI_GXM
-	float clipDist   : CLP0;
-#else
-	float clipDist   : TEXCOORD8;
+	float4 light     : TEXCOORD4;
+
+#ifdef OPT_SHADOW
+	float4 lightProj : TEXCOORD5;
+	float4 lightMap  : TEXCOORD6;
+
+	#ifndef MONOCHROME_AMBIENT
+		float3 ambient   : TEXCOORD7;
+	#endif
+
 #endif
 };
 
@@ -26,12 +32,12 @@ VS_OUTPUT main(VS_INPUT In) {
 	float4 rBasisRot = uBasis[0];
 	float4 rBasisPos = uBasis[1];
 
-	Out.texCoord = In.aTexCoord * (1.0 / 32767.0);
+	Out.texCoord = In.aTexCoord * INV_SHORT_HALF;
 
 	Out.coord = mulBasis(rBasisRot, rBasisPos.xyz, In.aCoord.xyz);
 	Out.texCoord.xy *= Out.texCoord.zw;
 
-	Out.normal.xyz = mulQuat(rBasisRot, normalize(In.aNormal.xyz));
+	Out.normal.xyz = normalize(In.aNormal.xyz);
 
 	float3 lv1 = (uLightPos[1].xyz - Out.coord) * uLightColor[1].w;
 	float3 lv2 = (uLightPos[2].xyz - Out.coord) * uLightColor[2].w;
@@ -40,8 +46,6 @@ VS_OUTPUT main(VS_INPUT In) {
 	float4 lum, att;
 	lum.x = 1.0;
 	att.x = 0.0;
-
-	Out.ambient = min(uMaterial.yyy, In.aLight.rgb);
 
 	float4 light;
 	lum.y = dot(Out.normal.xyz, normalize(lv1)); att.y = dot(lv1, lv1);
@@ -57,24 +61,28 @@ VS_OUTPUT main(VS_INPUT In) {
 		Out.normal.w = saturate(1.0 / exp(length(viewVec.xyz)));
 	#endif
 
-	if (OPT_SHADOW) {
+	#ifdef OPT_SHADOW
 		Out.light    = light;
-		Out.lightMap = In.aLight.rgb * light.x;
-	} else {
+		Out.lightMap.rgb = In.aLight.rgb * light.x;
+		Out.lightProj = calcLightProj(Out.coord);
+
+		#ifdef MONOCHROME_AMBIENT
+			Out.lightMap.a = min(uMaterial.y, In.aLight.r);
+		#else
+			Out.lightMap.a = 0.0;
+			Out.ambient = min(uMaterial.yyy, In.aLight.rgb);
+		#endif
+	#else
 		Out.light.xyz = uLightColor[1].xyz * light.y + uLightColor[2].xyz * light.z + uLightColor[3].xyz * light.w;
 		Out.light.w = 0.0;
 		Out.light.xyz += In.aLight.rgb * light.x;
-		Out.lightMap  = 0.0;
-	}
+	#endif
 
 	Out.diffuse = float4(In.aColor.rgb * (uMaterial.x * 1.8), 1.0);
 
 	Out.diffuse *= uMaterial.w;
-	
-	Out.pos = mul(uViewProj, float4(Out.coord, rBasisPos.w));
-	Out.lightProj = mul(uLightProj, float4(Out.coord, 1.0));
 
-	Out.clipDist = uParam.w - Out.coord.y * uParam.z;
+	Out.pos = mul(uViewProj, float4(Out.coord, 1.0));
 
 	return Out;
 }
@@ -82,37 +90,39 @@ VS_OUTPUT main(VS_INPUT In) {
 #else // PIXEL
 
 float4 main(VS_OUTPUT In) : COLOR0 {
-	float4 color = RGBA(tex2D(sDiffuse, In.texCoord.xy / In.texCoord.zw));
+	float4 color = SAMPLE_2D(sDiffuse, In.texCoord.xy / In.texCoord.zw);
 
 	#ifdef ALPHA_TEST
 		clip(color.w - ALPHA_REF);
 	#endif
 
-	#ifdef CLIP_PLANE
-		clip(In.clipDist);
-	#endif
-
 	color *= In.diffuse;
 
-	float3 lightVec = (uLightPos[0].xyz - In.coord) * uLightColor[0].w;
-	float3 normal   = normalize(In.normal.xyz);
-
 	float3 light;
-	if (OPT_SHADOW) {
+	#ifdef OPT_SHADOW
+		float3 lightVec = (uLightPos[0].xyz - In.coord) * uLightColor[0].w;
 		light = uLightColor[1].xyz * In.light.y + uLightColor[2].xyz * In.light.z + uLightColor[3].xyz * In.light.w;
-		float rShadow = getShadow(lightVec, normal, In.lightProj);
-		light += lerp(In.ambient, In.lightMap, rShadow);
-	} else {
+		float rShadow = getShadow(lightVec, In.lightProj);
+		#ifdef MONOCHROME_AMBIENT
+			light += lerp(In.lightMap.aaa, In.lightMap.rgb, rShadow);
+		#else
+			light += lerp(In.ambient, In.lightMap.rgb, rShadow);
+		#endif
+	#else
 		light = In.light.xyz;
-	}
+	#endif
 
-	if (OPT_CAUSTICS) {
+	#if defined(OPT_CAUSTICS) || defined(OPT_CONTACT)
+		float3 normal = normalize(In.normal.xyz);
+	#endif
+
+	#ifdef OPT_CAUSTICS
 		light += calcCaustics(In.coord, normal);
-	}
+	#endif
 
-	if (OPT_CONTACT) {
+	#ifdef OPT_CONTACT
 		light *= getContactAO(In.coord, normal) * 0.5 + 0.5;
-	}
+	#endif
 
 	color.xyz *= light;
 

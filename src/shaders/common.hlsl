@@ -1,51 +1,121 @@
-#ifdef __psp2__
-	#define _GAPI_GXM
+#ifdef _GAPI_GXM
 	#pragma pack_matrix( column_major )
-#else
-	#define _GAPI_D3D9
 #endif
 
-#define ALPHA_REF			0.5
+#define ALPHA_REF           0.5
 #define MAX_LIGHTS          4
 #define MAX_CONTACTS        15
 #define WATER_FOG_DIST      (1.0 / (6.0 * 1024.0))
 #define WATER_COLOR_DIST    (1.0 / (2.0 * 1024.0))
 #define UNDERWATER_COLOR    float3(0.6, 0.9, 0.9)
 #define UNDERWATER_COLOR_H  half3(0.6, 0.9, 0.9)
-#define SHADOW_NORMAL_BIAS  16.0
+#define SHADOW_NORMAL_BIAS  1.0
 #define SHADOW_CONST_BIAS   0.05
-#define SHADOW_SIZE         1024
-#define PI                  3.141592653589793
-
-static const float3 SHADOW_TEXEL = float3(1.0 / SHADOW_SIZE, 1.0 / SHADOW_SIZE, 0.0);
 
 #ifdef _GAPI_GXM
-	#define FLAGS_REG   c94
-	#define FLAGS_TYPE  float4
-	#define RGBA(c)     (c).rgba
-	#define RGB(c)      (c).rgb
+	#define SHADOW_SIZE     1024.0
 #else
-	#define FLAGS_REG     b0
-	#define FLAGS_TYPE    bool4
-	#define RGBA(c)       (c).bgra
-	#define RGB(c)        (c).bgr
-	#define CLIP_PLANE
+	#define SHADOW_SIZE     2048.0
+#endif
+
+#define SHADOW_TEXEL        (1.0 / SHADOW_SIZE)
+
+#define PI                  3.141592653589793
+
+#define INV_SHORT_HALF      (1.0 / 32767.0)
+
+#if (defined(_GAPI_D3D11) || defined(_GAPI_GXM)) && !defined(_GAPI_D3D11_9_3)
+	#define SHADOW_DEPTH
 #endif
 
 struct VS_INPUT {
+#ifdef _GAPI_GXM
 	float4 aCoord    : POSITION;
 	float4 aNormal   : NORMAL;
 	float4 aTexCoord : TEXCOORD0;
+#else
+	int4   aCoord    : POSITION;
+	int4   aNormal   : NORMAL;
+	int4   aTexCoord : TEXCOORD0;
+#endif
 	float4 aColor    : COLOR0;
 	float4 aLight    : COLOR1;
 };
 
-sampler2D   sDiffuse     : register(s0);
-sampler2D   sNormal      : register(s1);
-sampler2D   sReflect     : register(s2);
-sampler2D   sShadow      : register(s3);
-samplerCUBE sEnvironment : register(s4);
-sampler2D   sMask        : register(s5);
+#ifdef _GAPI_D3D11
+	SamplerState           smpDefault    : register(s0);
+	SamplerState           smpPoint      : register(s1);
+	SamplerState           smpPointWrap  : register(s2);
+	SamplerState           smpLinear     : register(s3);
+	SamplerState           smpLinearWrap : register(s4);
+	SamplerComparisonState smpCmp        : register(s5);
+
+	#ifdef DIFFUSE_AS_CUBE
+		TextureCube  sDiffuse : register(t0);
+	#else
+		Texture2D    sDiffuse : register(t0);
+	#endif
+
+	#ifdef NORMAL_AS_3D
+		Texture3D    sNormal  : register(t1);
+	#else
+		Texture2D    sNormal  : register(t1);
+	#endif
+
+	Texture2D    sReflect     : register(t2);
+	Texture2D    sShadow      : register(t3);
+	Texture2D    sMask        : register(t4);
+
+	#define SAMPLE_2D(T,uv)             T.Sample(smpDefault,     uv)
+	#define SAMPLE_2D_POINT(T,uv)       T.Sample(smpPoint,       uv)
+	#define SAMPLE_2D_POINT_WRAP(T,uv)  T.Sample(smpPointWrap,   uv)
+	#define SAMPLE_2D_LINEAR(T,uv)      T.Sample(smpLinear,      uv)
+	#define SAMPLE_2D_LINEAR_WRAP(T,uv) T.Sample(smpLinearWrap,  uv)
+
+	#ifdef _GAPI_D3D11_9_3
+		#define SAMPLE_2D_LOD0(T,uv)        SAMPLE_2D_POINT(T, uv)
+		#define SAMPLE_SHADOW(T,uv)         ((unpack(SAMPLE_2D_POINT(T, uv.xy/uv.w)) >= uv.z/uv.w) ? 1 : 0)
+	#else
+		#define SAMPLE_2D_LOD0(T,uv)        T.SampleLevel(smpLinear, uv, 0)
+		#define SAMPLE_SHADOW(T,uv)         T.SampleCmpLevelZero(smpCmp, uv.xy/uv.w, uv.z/uv.w)
+	#endif
+
+	#define SAMPLE_3D(T,uv)             T.SampleLevel(smpLinearWrap, uv, 0)
+	#define SAMPLE_CUBE(T,uv)           T.Sample(smpLinear, uv)
+
+	#define POSITION    SV_POSITION
+#else
+	#ifdef DIFFUSE_AS_CUBE
+		samplerCUBE  sDiffuse : register(s0);
+	#else
+		sampler2D    sDiffuse : register(s0);
+	#endif
+
+	sampler2D    sNormal      : register(s1);
+	sampler2D    sReflect     : register(s2);
+	sampler2D    sShadow      : register(s3);
+	sampler2D    sMask        : register(s4);
+
+	#define SAMPLE_2D(T,uv)             tex2D(T, uv)
+	#define SAMPLE_2D_POINT(T,uv)       tex2D(T, uv)
+	#define SAMPLE_2D_POINT_WRAP(T,uv)  tex2D(T, uv)
+	#define SAMPLE_2D_LINEAR(T,uv)      tex2D(T, uv)
+	#define SAMPLE_2D_LINEAR_WRAP(T,uv) tex2D(T, uv)
+	#define SAMPLE_2D_LOD0(T,uv)        tex2Dlod(T, float4(uv.xy, 0, 0))
+
+	#if defined(_GAPI_GXM)
+		#define SAMPLE_SHADOW(T,uv)     f1tex2Dproj(T, uv)
+	#else
+		#define SAMPLE_SHADOW(T,uv)     ((unpack(tex2D(T, uv.xy/uv.w)) >= uv.z/uv.w) ? 1 : 0)
+	#endif
+
+	#define SAMPLE_3D(T,uv)             tex3D(T, uv)
+	#define SAMPLE_CUBE(T,uv)           texCUBE(T, uv)
+
+	#if defined(PIXEL) && !defined(_GAPI_GXM)
+		#define POSITION    VPOS
+	#endif
+#endif
 
 float4      uParam                  : register(  c0 );
 float4      uTexParam               : register(  c1 );
@@ -60,14 +130,25 @@ float4      uLightPos[MAX_LIGHTS]   : register( c83 );
 float4      uLightColor[MAX_LIGHTS] : register( c87 );
 float4      uRoomSize               : register( c91 );
 float4      uPosScale[2]            : register( c92 );
-FLAGS_TYPE  uFlags[4]               : register( FLAGS_REG );
 float4      uContacts[MAX_CONTACTS] : register( c98 );
 
 // options for compose, shadow, ambient passes
-#define OPT_AMBIENT             uFlags[0].x
-#define OPT_SHADOW              uFlags[0].y
-#define OPT_CONTACT             uFlags[0].z
-#define OPT_CAUSTICS            uFlags[0].w
+#ifdef _GAPI_GXM
+	//#define OPT_AMBIENT
+	#define OPT_SHADOW
+	//#define OPT_CONTACT
+	//#define OPT_CAUSTICS
+#elif _GAPI_D3D11_9_3
+	//#define OPT_AMBIENT
+	//#define OPT_SHADOW
+	//#define OPT_CONTACT
+	//#define OPT_CAUSTICS
+#else
+    #define OPT_AMBIENT
+    #define OPT_SHADOW
+    #define OPT_CONTACT
+    #define OPT_CAUSTICS
+#endif
 
 float4 pack(float value) {
 	float4 v = frac(value * float4(1.0, 255.0, 65025.0, 16581375.0));
@@ -105,41 +186,36 @@ float calcCaustics(float3 coord, float3 n) {
 	float2 cc = saturate((coord.xz - uRoomSize.xy) / uRoomSize.zw);
 	float2 border = 256.0 / uRoomSize.zw;
 	float2 fade   = smoothstep((float2)0.0, border, cc) * (1.0 - smoothstep(1.0 - border, 1.0, cc));
-	return tex2Dlod(sReflect, float4(cc.x, 1.0 - cc.y, 0, 0)).x * max(0.0, -n.y) * fade.x * fade.y;
+	return SAMPLE_2D_LINEAR(sReflect, float2(cc.x, 1.0 - cc.y)).x * max(0.0, -n.y) * fade.x * fade.y;
 }
 
 float calcCausticsV(float3 coord) {
 	return 0.5 + abs(sin(dot(coord.xyz, 1.0 / 1024.0) + uParam.x)) * 0.75;
 }
 
-half3 calcNormalV(float2 tc, half base) {
-	half dx = (half)tex2Dlod(sNormal, float4(tc.x + uTexParam.x, tc.y, 0, 0)).x - base;
-	half dz = (half)tex2Dlod(sNormal, float4(tc.x, tc.y - uTexParam.y, 0, 0)).x - base;
-	return (half3)normalize( half3(dx, 64.0 / (1024.0 * 8.0), dz) );
-}
-
-float3 calcNormalF(float2 tcR, float2 tcB, float base) {
-	float dx = tex2D(sNormal, tcR).x - base;
-	float dz = tex2D(sNormal, tcB).x - base;
+#ifndef NORMAL_AS_3D
+float3 calcHeightMapNormal(float2 tcR, float2 tcB, float base) {
+	float dx = SAMPLE_2D_LOD0(sNormal, tcR).x - base;
+	float dz = SAMPLE_2D_LOD0(sNormal, tcB).x - base;
 	return normalize( float3(dx, 64.0 / (1024.0 * 8.0), dz) );
 }
+#endif
 
-half calcFresnel(half VoH, half f0) {
-	half f = (half)pow(1.0 - VoH, 5.0);
-	return f + f0 * (1.0h - f);
+float calcFresnel(float NdotV, float f0) {
+	return f0 + (1.0 - f0) * pow(1.0 - NdotV, 5.0);
 }
 
 void applyFogUW(inout float3 color, float3 coord, float waterFogDist, float waterColorDist) {
 	float h    = coord.y - uParam.y;
 	float3 dir = uViewPos.xyz - coord.xyz;
-	float dist;
-	
+	float dist = lerp(length(dir), abs(h / normalize(dir).y), step(uViewPos.y, uParam.y));
+/*
 	if (uViewPos.y < uParam.y) {
 		dist = abs(h / normalize(dir).y);
 	} else {
 		dist = length(dir);
 	}
-
+*/
 	float fog = saturate(1.0 / exp(dist * waterFogDist));
 	dist += h;
 	color.xyz *= lerp((float3)1.0, UNDERWATER_COLOR, clamp(dist * waterColorDist, 0.0, 2.0));
@@ -148,14 +224,6 @@ void applyFogUW(inout float3 color, float3 coord, float waterFogDist, float wate
 
 void applyFog(inout float3 color, float fogFactor) {
 	color.xyz = lerp(uFogParams.xyz, color.xyz, fogFactor);
-}
-
-float SHADOW(float2 p) {
-	#ifdef SHADOW_DEPTH
-		return tex2Dlod(sShadow, float4(p, 0, 0)).x;
-	#else
-		return unpack(tex2Dlod(sShadow, float4(p, 0, 0)));
-	#endif
 }
 
 float getShadowValue(float3 lightVec, float4 lightProj) {
@@ -170,40 +238,21 @@ float getShadowValue(float3 lightVec, float4 lightProj) {
 */
 	float factor = step(0.0, lightProj.w); //float((sMin > 0.0f) && (sMax < lightProj.w)); // 
 	lightProj.xyz *= factor;
+	lightProj.z -= SHADOW_CONST_BIAS * SHADOW_TEXEL * lightProj.w;
 
-#ifdef _GAPI_GXM
-	lightProj.z += SHADOW_CONST_BIAS * SHADOW_TEXEL.x * lightProj.w;
-	float rShadow = f1tex2Dproj(sShadow, lightProj);
-#else
-	float3 p = lightProj.xyz / lightProj.w;
-	
-	p.z -= SHADOW_CONST_BIAS * SHADOW_TEXEL.x;
 
-	p.z = saturate(p.z);
+	float rShadow = SAMPLE_SHADOW(sShadow, lightProj);
 
-	float4 samples = float4(
-			SHADOW(p.xy                  ),
-			SHADOW(p.xy + SHADOW_TEXEL.xz),
-			SHADOW(p.xy + SHADOW_TEXEL.zy),
-			SHADOW(p.xy + SHADOW_TEXEL.xy)
-		);
-	samples = step(p.zzzz, samples);
-
-	float2 f = frac(p.xy / SHADOW_TEXEL.xy);
-	samples.xy = lerp(samples.xz, samples.yw, f.xx);
-	float rShadow = lerp(samples.x, samples.y, f.y);
-#endif
-
-	//rShadow = lerp(1.0, rShadow, factor);
-	
 	float fade = saturate(dot(lightVec, lightVec));
 	return rShadow + (1.0 - rShadow) * fade;
 }
 
-float getShadow(float3 lightVec, float3 normal, float4 lightProj) {
-	float factor = clamp(1.0 - dot(normalize(lightVec), normal), 0.0, 1.0);
-	factor *= SHADOW_NORMAL_BIAS;
-	return getShadowValue(lightVec, lightProj /*mul(uLightProj, float4(coord + normal * factor, 1.0)) */ );
+float getShadow(float3 lightVec, float4 lightProj) {
+	return getShadowValue(lightVec, lightProj);
+}
+
+float4 calcLightProj(float3 coord) {
+	return mul(uLightProj, float4(coord, 1.0));
 }
 
 float getContactAO(float3 p, float3 n) {

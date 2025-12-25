@@ -9,7 +9,7 @@ EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 int WEBGL_VERSION;
 
 // timing
-int osGetTime() {
+int osGetTimeMS() {
     return (int)emscripten_get_now();
 }
 
@@ -103,14 +103,7 @@ JoyKey joyToInputKey(int code) {
     return jkNone;
 }
 
-#define JOY_DEAD_ZONE_STICK      0.3f
 #define JOY_DEAD_ZONE_TRIGGER    0.01f
-
-vec2 joyAxis(float x, float y) {
-    if (fabsf(x) > JOY_DEAD_ZONE_STICK || fabsf(y) > JOY_DEAD_ZONE_STICK)
-        return vec2(x, y);
-    return vec2(0.0f);
-}
 
 vec2 joyTrigger(float x) {
     return vec2(x > JOY_DEAD_ZONE_TRIGGER ? x : 0.0f, 0.0f);
@@ -146,8 +139,8 @@ void joyUpdate() {
                 Input::setJoyPos(j, key, joyTrigger(state.analogButton[i]));
         }
 
-        Input::setJoyPos(j, jkL, joyAxis(state.axis[0], state.axis[1]));
-        Input::setJoyPos(j, jkR, joyAxis(state.axis[2], state.axis[3]));
+        Input::setJoyPos(j, jkL, vec2(state.axis[0], state.axis[1]));
+        Input::setJoyPos(j, jkR, vec2(state.axis[2], state.axis[3]));
     }
 }
 
@@ -272,11 +265,16 @@ InputKey keyToInputKey(int code) {
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6B, 0x6D, 0x6A, 0x6F, 0x6E,
+        0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B,
+        0xBB, 0xBD, 0xDB, 0xDD, 0xBF, 0xDC, 0xBC, 0xBE, 0xC0, 0xBA, 0xDE, 0x21, 0x22, 0x24, 0x23, 0x2E, 0x2D, 0x08
     };
 
-    for (int i = 0; i < sizeof(codes) / sizeof(codes[0]); i++)
-        if (codes[i] == code)
+    for (int i = 0; i < COUNT(codes); i++) {
+        if (codes[i] == code) {
             return (InputKey)(ikLeft + i);
+        }
+    }
     return ikNone;
 }
 

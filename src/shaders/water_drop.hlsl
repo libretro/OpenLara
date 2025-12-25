@@ -8,7 +8,7 @@ struct VS_OUTPUT {
 
 float2 getInvUV(float2 uv, float4 param) {
 	float2 p = (float2(uv.x, -uv.y) * 0.5 + 0.5) * param.zw;
-#ifndef _GAPI_GXM
+#ifdef _GAPI_D3D9
 	p.xy += 0.5 * param.xy;
 #endif
 	return p;
@@ -24,7 +24,7 @@ float2 getUV(float2 uv, float4 param) {
 VS_OUTPUT main(VS_INPUT In) {
 	VS_OUTPUT Out;
 
-	float3 coord = In.aCoord.xyz * (1.0 / 32767.0);
+	float3 coord = In.aCoord.xyz * INV_SHORT_HALF;
 
 	Out.pos       = float4(coord.xyz, 1.0);
 	Out.texCoord  = getInvUV(coord.xy, uTexParam);
@@ -36,7 +36,7 @@ VS_OUTPUT main(VS_INPUT In) {
 #else // PIXEL
 
 half4 main(VS_OUTPUT In) : COLOR0 {
-	half2 v = tex2D(sNormal, In.texCoord.xy).xy;
+	half2 v = SAMPLE_2D_LINEAR(sNormal, In.texCoord.xy).xy;
 
 	float value = max(0.0, 1.0 - length(uParam.xy - In.dropCoord / uTexParam.xy) / uParam.z);
 	value = 0.5 - cos(value * PI) * 0.5;

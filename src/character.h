@@ -272,7 +272,7 @@ struct Character : Controller {
     }
 
     void addSparks(uint32 mask) {
-        Sphere spheres[MAX_SPHERES];
+        Sphere spheres[MAX_JOINTS];
         int count = getSpheres(spheres);
         for (int i = 0; i < count; i++)
             if (mask & (1 << i)) {
@@ -308,13 +308,23 @@ struct Character : Controller {
     }
 
     void bakeEnvironment(Texture *&environment) {
+        Core::beginFrame();
+
         flags.invisible = true;
         if (!environment) {
-            environment = new Texture(256, 256, 1, FMT_RGBA, OPT_CUBEMAP | OPT_MIPMAPS | OPT_TARGET);
+            uint32 opt = OPT_CUBEMAP | OPT_TARGET;
+            #ifdef USE_CUBEMAP_MIPS
+                opt |= OPT_MIPMAPS;
+            #endif
+            environment = new Texture(256, 256, 1, FMT_RGB16, opt);
         }
         game->renderEnvironment(getRoomIndex(), pos - vec3(0.0f, 384.0f, 0.0f), &environment);
-        environment->generateMipMap();
+        #ifdef USE_CUBEMAP_MIPS
+            environment->generateMipMap();
+        #endif
         flags.invisible = false;
+
+        Core::endFrame();
     }
 };
 

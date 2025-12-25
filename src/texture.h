@@ -8,14 +8,20 @@ struct Texture : GAPI::Texture {
 
     #ifdef SPLIT_BY_TILE
 
-        #ifdef _OS_PSP
-            TR::Tile4 *tiles;
-            TR::CLUT  *cluts;
+        #if defined(_GAPI_SW)
+            Tile8 *tiles;
 
-            Texture(TR::Tile4 *tiles, int tilesCount, TR::CLUT *cluts, int clutsCount) : GAPI::Texture(256, 256, OPT_PROXY) {
+            Texture(Tile8 *tiles, int tilesCount) : GAPI::Texture(256, 256, 1, OPT_PROXY) {
+                this->tiles = tiles;
+            }
+        #elif defined(_GAPI_GU)
+            Tile4 *tiles;
+            CLUT  *cluts;
+		// TODO: PSP depth ??
+            Texture(Tile4 *tiles, int tilesCount, CLUT *cluts, int clutsCount) : GAPI::Texture(256, 256, 1, OPT_PROXY) {
                 #ifdef EDRAM_TEX
-                    this->tiles = (TR::Tile4*)GAPI::allocEDRAM(tilesCount * sizeof(tiles[0]));
-                    this->cluts =  (TR::CLUT*)GAPI::allocEDRAM(clutsCount * sizeof(cluts[0]));
+                    this->tiles = (Tile4*)GAPI::allocEDRAM(tilesCount * sizeof(tiles[0]));
+                    this->cluts =  (CLUT*)GAPI::allocEDRAM(clutsCount * sizeof(cluts[0]));
                     memcpy(this->cluts, cluts, clutsCount * sizeof(cluts[0]));
                     #ifdef TEX_SWIZZLE
                         for (int i = 0; i < tilesCount; i++)
@@ -37,17 +43,19 @@ struct Texture : GAPI::Texture {
                 uint32 *data;
             };
 
-            Texture(Tile *tiles, int tilesCount) : GAPI::Texture(256, 256, OPT_PROXY) {
+            Texture(Tile *tiles, int tilesCount) : GAPI::Texture(256, 256, 1, OPT_PROXY) {
                 memset(this->tiles, 0, sizeof(this->tiles));
 
                 ASSERT(tilesCount < COUNT(this->tiles));
                 for (int i = 0; i < tilesCount; i++)
-                    this->tiles[i] = new Texture(tiles[i].width, tiles[i].height, 1, FMT_RGBA, OPT_MIPMAPS, tiles[i].data);
+                    this->tiles[i] = new Texture(tiles[i].width, tiles[i].height, 1, FMT_RGBA, OPT_NEAREST, tiles[i].data);
             }
         #endif
 
         void bindTile(uint16 tile, uint16 clut) {
-        #ifdef _OS_PSP
+        #if defined(_GAPI_SW)
+            bindTileIndices(tiles + tile);
+        #elif defined(_GAPI_GU)
             bindTileCLUT(tiles + tile, cluts + clut);
         #else
             tiles[tile]->bind(0);
@@ -68,7 +76,7 @@ struct Texture : GAPI::Texture {
 
     Texture(int width, int height, int depth, TexFormat format, uint32 opt = 0, void *data = NULL) : GAPI::Texture(width, height, depth, opt) {
         #ifdef SPLIT_BY_TILE
-            #ifndef _OS_PSP
+            #if !defined(_GAPI_SW) && !defined(_GAPI_GU)
                 memset(this->tiles, 0, sizeof(tiles));
             #endif
         #endif
@@ -116,19 +124,28 @@ struct Texture : GAPI::Texture {
             this->opt &= ~OPT_VOLUME;
         }
 
+        if (this->opt & OPT_PROXY) {
+            return;
+        }
+
         init(data);
 
-        if (mipmaps)
+        if (mipmaps && width > Core::support.texMinSize && height > Core::support.texMinSize)
             generateMipMap();
     }
 
     virtual ~Texture() {
-        #ifndef _OS_PSP
+        #if !defined(_GAPI_SW) && !defined(_GAPI_GU)
             #ifdef SPLIT_BY_TILE
                 for (int i = 0; i < COUNT(tiles); i++)
                     delete tiles[i];
             #endif
         #endif
+
+        if (this->opt & OPT_PROXY) {
+            return;
+        }
+
         deinit();
     }
 
@@ -272,33 +289,59 @@ struct Texture : GAPI::Texture {
     }
 
     static uint8* LoadBMP(Stream &stream, uint32 &width, uint32 &height) {
-        int32 offset;
+        int32  offset, size;
+        uint16 bpp;
         stream.seek(10);
         stream.read(offset);
         stream.seek(4);
         stream.read(width);
         stream.read(height);
+        stream.seek(2);
+        stream.read(bpp);
+        stream.seek(8);
         stream.seek(offset - stream.pos);
 
-        Color24 *data24 = new Color24[width * height];
-        Color32 *data32 = new Color32[width * height];
-        stream.raw(data24, width * height * sizeof(Color24));
+        size = width * height * bpp >> 3;
+        uint8 *data = new uint8[size];
+        stream.raw(data, size);
 
-        Color32 *dst = data32;
-        for (uint32 y = 0; y < height; y++) {
-            Color24 *src = data24 + (height - y - 1) * width;
-            for (uint32 x = 0; x < width; x++) {
-                dst->r = src->b;
-                dst->g = src->g;
-                dst->b = src->r;
-                dst->a = 255;
-                src++;
-                dst++;
+        uint8 *data32 = new uint8[width * height * 8];
+        Color32 *dst = (Color32*)data32;
+
+        switch (bpp) {
+            case 1  : { // monochrome (alpha)
+                for (uint32 y = 0; y < height; y++) {
+                    uint8 *src = data + (height - y - 1) * (width / 8);
+                    for (uint32 x = 0; x < width / 8; x++) {
+                        for (int i = 7; i >= 0; i--) {
+                            dst->r = dst->g = dst->b = 255;
+                            dst->a = (*src & (1 << i)) != 0 ? 255 : 0;
+                            dst++;
+                        }
+                        src++;
+                    }
+                }
+                break;
             }
+            case 24 : { // true color
+                for (uint32 y = 0; y < height; y++) {
+                    Color24 *src = (Color24*)data + (height - y - 1) * width;
+                    for (uint32 x = 0; x < width; x++) {
+                        dst->r = src->b;
+                        dst->g = src->g;
+                        dst->b = src->r;
+                        dst->a = 255;
+                        src++;
+                        dst++;
+                    }
+                }
+                break;
+            }
+            default : ASSERT(false);
         }
-        delete[] data24;
+        delete[] data;
 
-        return (uint8*)data32;
+        return data32;
     }
 
 #ifdef USE_INFLATE
@@ -604,8 +647,12 @@ struct Texture : GAPI::Texture {
     }
 
     static uint8* LoadBIN(Stream &stream, uint32 &width, uint32 &height) {
-        height = 224;
-        width  = stream.size / height / 2;
+        if (strstr(stream.name, "224.") || stream.size == 157696) {
+            height = 224;
+        } else {
+            height = 256;
+        }
+        width = stream.size / height / 2;
 
         uint8 *data = new uint8[stream.size];
         stream.raw(data, stream.size);
@@ -683,16 +730,16 @@ struct Texture : GAPI::Texture {
     }
 };
 
-#define ATLAS_BORDER 8
 
 struct Atlas {
+
     struct Tile {
         uint16          id;
         TR::TextureInfo *tex;
         short4          uv;
     } *tiles;
 
-    typedef void (Callback)(int id, int tileX, int tileY, int atalsWidth, int atlasHeight, Tile &tile, void *userData, void *data);
+    typedef void (Callback)(Atlas *atlas, int id, int tileX, int tileY, int atalsWidth, int atlasHeight, Tile &tile, void *userData, void *data);
 
     struct Node {
         Node   *child[2];
@@ -708,21 +755,21 @@ struct Atlas {
             delete child[1];
         }
 
-        Node* insert(const short4 &tile, int tileIndex) {
+        Node* insert(Atlas *atlas, const short4 &tile, int tileIndex) {
             ASSERT(tile.x != 0x7FFF);
 
             if (child[0] != NULL && child[1] != NULL) {
-                Node *node = child[0]->insert(tile, tileIndex);
+                Node *node = child[0]->insert(atlas, tile, tileIndex);
                 if (node != NULL) return node;
-                return child[1]->insert(tile, tileIndex);
+                return child[1]->insert(atlas, tile, tileIndex);
             } else {
                 if (this->tileIndex != -1)
                     return NULL;
 
                 int16 w  = rect.z - rect.x;
                 int16 h  = rect.w - rect.y;
-                int16 tx = (tile.z - tile.x) + ATLAS_BORDER * 2;
-                int16 ty = (tile.w - tile.y) + ATLAS_BORDER * 2;
+                int16 tx = (tile.z - tile.x) + atlas->border.x + atlas->border.z;
+                int16 ty = (tile.w - tile.y) + atlas->border.y + atlas->border.w;
 
                 if (w < tx || h < ty)
                     return NULL;
@@ -743,7 +790,7 @@ struct Atlas {
                     child[1] = new Node(rect.x, rect.y + ty, rect.z, rect.w);
                 }
 
-                return child[0]->insert(tile, tileIndex);
+                return child[0]->insert(atlas, tile, tileIndex);
             }
         }
     } *root;
@@ -751,10 +798,11 @@ struct Atlas {
     int      tilesCount;
     int      size;
     int      width, height;
+    short4   border;
     void     *userData;
     Callback *callback;
 
-    Atlas(int maxTiles, void *userData, Callback *callback) : root(NULL), tilesCount(0), size(0), userData(userData), callback(callback) {
+    Atlas(int maxTiles, short4 border, void *userData, Callback *callback) : root(NULL), tilesCount(0), size(0), border(border), userData(userData), callback(callback) {
         tiles = new Tile[maxTiles];
     }
 
@@ -778,24 +826,24 @@ struct Atlas {
         tilesCount++;
 
         if (uv.x != 0x7FFF)
-            size += (uv.z - uv.x + ATLAS_BORDER * 2) * (uv.w - uv.y + ATLAS_BORDER * 2);
+            size += (uv.z - uv.x + border.x + border.z) * (uv.w - uv.y + border.y + border.w);
     }
 
     bool insertAll(int *indices) {
         for (int i = 0; i < tilesCount; i++) {
             int idx = indices[i];
-            if (tiles[idx].uv.x != 0x7FFF && !root->insert(tiles[idx].uv, idx))
+            if (tiles[idx].uv.x != 0x7FFF && !root->insert(this, tiles[idx].uv, idx))
                 return false;
         }
         return true;
     }
 
-    Texture* pack() {
+    Texture* pack(uint32 opt) {
     // TODO TR2 fix CUT2 AV
 //        width  = 4096;//nextPow2(int(sqrtf(float(size))));
 //        height = 2048;//(width * width / 2 > size) ? (width / 2) : width;
-        width  = nextPow2(int(sqrtf(float(size))));
-        height = (width * width / 2 > size) ? (width / 2) : width;
+        width  = max(1, nextPow2(int(sqrtf(float(size)))));
+        height = max(1, (width * width / 2 > size) ? (width / 2) : width);
     // sort
         int *indices = new int[tilesCount];
         for (int i = 0; i < tilesCount; i++)
@@ -809,7 +857,7 @@ struct Atlas {
                 short4 &a = tiles[indices[i - 1]].uv;
                 short4 &b = tiles[indices[i]].uv;
                 //if ((a.z - a.x + ATLAS_BORDER * 2) * (a.w - a.y + ATLAS_BORDER * 2) < (b.z - b.x + ATLAS_BORDER * 2) * (b.w - b.y + ATLAS_BORDER * 2)) {
-                if ((a.z - a.x + ATLAS_BORDER * 2) < (b.z - b.x + ATLAS_BORDER * 2)) {
+                if ((a.z - a.x) < (b.z - b.x)) {
                     swap(indices[i - 1], indices[i]);
                     swapped = true;
                 }
@@ -832,12 +880,12 @@ struct Atlas {
 
         delete[] indices;
 
-        uint32 *data = new uint32[width * height];
+        AtlasColor *data = new AtlasColor[width * height];
         memset(data, 0, width * height * sizeof(data[0]));
         fill(root, data);
         fillInstances();
 
-        Texture *atlas = new Texture(width, height, 1, FMT_RGBA, OPT_MIPMAPS, data);
+        Texture *atlas = new Texture(width, height, 1, ATLAS_FORMAT, opt, data);
 
         //Texture::SaveBMP("atlas", (char*)data, width, height);
 
@@ -852,13 +900,13 @@ struct Atlas {
             fill(node->child[0], data);
             fill(node->child[1], data);
         } else
-            callback(tiles[node->tileIndex].id, node->rect.x, node->rect.y, width, height, tiles[node->tileIndex], userData, data);
+            callback(this, tiles[node->tileIndex].id, node->rect.x, node->rect.y, width, height, tiles[node->tileIndex], userData, data);
     }
 
     void fillInstances() {
         for (int i = 0; i < tilesCount; i++)
             if (tiles[i].uv.x == 0x7FFF)
-                callback(tiles[i].id, tiles[i].uv.y, 0, width, height, tiles[i], userData, NULL);
+                callback(this, tiles[i].id, tiles[i].uv.y, 0, width, height, tiles[i], userData, NULL);
     }
 };
 

@@ -8,9 +8,9 @@ struct Shader : GAPI::Shader {
     enum Type { 
         DEFAULT = 0,
         SPRITE = 0, FLASH, ROOM, ENTITY, MIRROR,
-        FILTER_UPSCALE = 0, FILTER_DOWNSAMPLE, FILTER_DOWNSAMPLE_DEPTH, FILTER_GRAYSCALE, FILTER_BLUR, FILTER_EQUIRECTANGULAR,
+        FILTER_UPSCALE = 0, FILTER_DOWNSAMPLE, FILTER_DOWNSAMPLE_DEPTH, FILTER_GRAYSCALE, FILTER_BLUR, FILTER_ANAGLYPH, FILTER_EQUIRECTANGULAR,
         WATER_DROP = 0, WATER_SIMULATE, WATER_CAUSTICS, WATER_RAYS, WATER_MASK, WATER_COMPOSE,
-        SKY_TEXTURE = 0, SKY_CLOUDS, SKY_CLOUDS_AZURE,
+        SKY_TEXTURE = 0, SKY_CLOUDS, SKY_AZURE,
         MAX = 6
     };
 
@@ -28,7 +28,6 @@ struct Shader : GAPI::Shader {
         setParam(uLightProj, Core::mLightProj);
         setParam(uViewPos,   Core::viewPos);
         setParam(uParam,     Core::params);
-        setParam(uFogParams, Core::fogParams);
     }
 };
 

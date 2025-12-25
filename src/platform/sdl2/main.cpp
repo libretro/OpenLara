@@ -1,15 +1,10 @@
 #include <string.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <pwd.h>
-#include <pthread.h>
-#include <alsa/asoundlib.h>
 
-// SDL2 include stuff
 #include <SDL2/SDL.h>
-#define GL_GLEXT_PROTOTYPES 1
-#include <SDL2/SDL_opengles2.h>
-//
 
 #include "game.h"
 
@@ -18,91 +13,85 @@
 // timing
 unsigned int startTime;
 
-int osGetTime() {
+int osGetTimeMS() {
     timeval t;
     gettimeofday(&t, NULL);
     return int((t.tv_sec - startTime) * 1000 + t.tv_usec / 1000);
 }
 
 // sound
-snd_pcm_uframes_t   SND_FRAMES = 512;
-snd_pcm_t           *sndOut;
+#define SND_FRAME_SIZE  4
+#define SND_FRAMES      1024
+
+// A Frame is a struct containing: int16 L, int16 R.
 Sound::Frame        *sndData;
-pthread_t           sndThread;
+SDL_AudioDeviceID sdl_audiodev;
 
-void* sndFill(void *arg) {
-    while (sndOut) {
+void sndFill(void *udata, Uint8 *stream, int len) {
+        // Let's milk the audio subsystem for SND_FRAMES frames!
         Sound::fill(sndData, SND_FRAMES);
-
-        int err = snd_pcm_writei(sndOut, sndData, SND_FRAMES);
-        if (err < 0) {
-            LOG("! sound: write %s\n", snd_strerror(err));;
-            if (err != -EPIPE)
-                break;
-
-            err = snd_pcm_recover(sndOut, err, 0);
-            if (err < 0) {
-                LOG("! sound: failed to recover\n");
-                break;
-            }
-            snd_pcm_prepare(sndOut);
-        }
-    }
-    return NULL;
+        // We have the number of samples, but each sample is 4 bytes long (16bit stereo sound),
+        // and memcpy copies a number of bytes.
+        memcpy (stream, sndData, SND_FRAMES * SND_FRAME_SIZE);
 }
 
 bool sndInit() {
-    unsigned int freq = 44100;
+    int FREQ = 44100;
 
-    int err;
-    if ((err = snd_pcm_open(&sndOut, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
-        LOG("! sound: open %s\n", snd_strerror(err));\
-        sndOut = NULL;
+    SDL_AudioSpec desired, obtained;
+
+    desired.freq     = FREQ;
+    desired.format   = AUDIO_S16SYS;
+    desired.channels = 2;
+    desired.samples  = SND_FRAMES;
+    desired.callback = sndFill;
+    desired.userdata = NULL;
+
+    sdl_audiodev = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, /*SDL_AUDIO_ALLOW_FORMAT_CHANGE*/0);
+    if (sdl_audiodev == 0)
+    {
+        LOG ("SDL2: error opening audio device: %s\n", SDL_GetError());
         return false;
     }
 
-    snd_pcm_hw_params_t *params;
-
-    snd_pcm_hw_params_alloca(&params);
-    snd_pcm_hw_params_any(sndOut, params);
-    snd_pcm_hw_params_set_access(sndOut, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-
-    snd_pcm_hw_params_set_channels(sndOut, params, 2);
-    snd_pcm_hw_params_set_format(sndOut, params, SND_PCM_FORMAT_S16_LE);
-    snd_pcm_hw_params_set_rate_near(sndOut, params, &freq, NULL);
-
-    snd_pcm_hw_params_set_periods(sndOut, params, 4, 0);
-    snd_pcm_hw_params_set_period_size_near(sndOut, params, &SND_FRAMES, NULL);
-    snd_pcm_hw_params_get_period_size(params, &SND_FRAMES, 0);
-
-    snd_pcm_hw_params(sndOut, params);
-    snd_pcm_prepare(sndOut);
-
-    sndData = new Sound::Frame[SND_FRAMES];
-    memset(sndData, 0, SND_FRAMES * sizeof(Sound::Frame));
-    if ((err = snd_pcm_writei(sndOut, sndData, SND_FRAMES)) < 0) {
-        LOG("! sound: write %s\n", snd_strerror(err));\
-        sndOut = NULL;
+    if (desired.samples != obtained.samples) {
+        LOG ("SDL2: number of samples not supported by device. Watch out for buggy audio drivers!\n");
+        return false;
     }
 
-    snd_pcm_start(sndOut);
-    pthread_create(&sndThread, NULL, sndFill, NULL);
+    // Initialize audio buffer and fill it with zeros
+    sndData = new Sound::Frame[SND_FRAMES];
+    memset(sndData, 0, SND_FRAMES * SND_FRAME_SIZE);
+
+    SDL_PauseAudioDevice(sdl_audiodev,0);
 
     return true;
 }
 
 void sndFree() {
-    pthread_cancel(sndThread);
-    snd_pcm_drop(sndOut);
-    snd_pcm_drain(sndOut);
-    snd_pcm_close(sndOut);
+    SDL_PauseAudioDevice(sdl_audiodev,1);
+    SDL_CloseAudioDevice(sdl_audiodev);
+
+    // Delete the audio buffer
     delete[] sndData;
 }
 
 // Input
-SDL_GameController *sdl_gamecontroller;
-SDL_Joystick *sdl_joystick;
-bool using_old_joystick_interface;
+
+#define MAX_JOYS 4
+#define JOY_DEAD_ZONE_STICK      8192
+#define WIN_W 640
+#define WIN_H 480
+
+struct sdl_input *sdl_inputs;
+int sdl_numjoysticks, sdl_numcontrollers;
+SDL_Joystick *sdl_joysticks[MAX_JOYS];
+SDL_GameController *sdl_controllers[MAX_JOYS];
+SDL_Haptic *sdl_haptics[MAX_JOYS];
+SDL_Window *sdl_window;
+SDL_DisplayMode sdl_displaymode;
+
+bool fullscreen;
 
 vec2 joyL, joyR;
 
@@ -111,8 +100,39 @@ bool osJoyReady(int index) {
 }
 
 void osJoyVibrate(int index, float L, float R) {
-    // TODO
+    if (index >= sdl_numcontrollers)
+        return;
+    if (SDL_IsGameController(index)) {
+        SDL_GameControllerRumble(sdl_controllers[index], L*0xFFFF, R*0xFFFF, 500);
+    } else {
+        SDL_HapticRumblePlay(sdl_haptics[index], L+R, 500);
+    }
 }
+
+bool isKeyPressed (SDL_Scancode scancode) {
+    const Uint8 *state = SDL_GetKeyboardState(NULL);
+    if (state[scancode]) {
+        return true;
+    }
+    return false;
+}
+
+#ifndef _GAPI_GLES 
+void toggleFullscreen () {
+
+    Uint32 flags = 0;
+
+    fullscreen = !fullscreen;
+
+    flags = fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
+
+    SDL_SetWindowFullscreen (sdl_window, flags);
+
+    // Tell the engine we have changed display size!
+    Core::width  = fullscreen ? sdl_displaymode.w : WIN_W;
+    Core::height = fullscreen ? sdl_displaymode.h : WIN_H;
+}
+#endif
 
 InputKey codeToInputKey(int code) {
     switch (code) {
@@ -172,9 +192,9 @@ InputKey codeToInputKey(int code) {
     return ikNone;
 }
 
-JoyKey codeToJoyKey(int code) {
+JoyKey controllerCodeToJoyKey(int code) {
+// joystick using the modern SDL GameController interface
     switch (code) {
-    // gamepad
         case SDL_CONTROLLER_BUTTON_A                    : return jkA;
         case SDL_CONTROLLER_BUTTON_B                    : return jkB;
         case SDL_CONTROLLER_BUTTON_X                    : return jkX;
@@ -185,37 +205,122 @@ JoyKey codeToJoyKey(int code) {
         case SDL_CONTROLLER_BUTTON_START                : return jkStart;
         case SDL_CONTROLLER_BUTTON_LEFTSTICK            : return jkL;
         case SDL_CONTROLLER_BUTTON_RIGHTSTICK           : return jkR;
+        case SDL_CONTROLLER_BUTTON_DPAD_UP              : return jkUp;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN            : return jkDown;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT            : return jkLeft;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT           : return jkRight;
     }
     return jkNone;
 }
 
-bool inputInit() {
-    sdl_gamecontroller = NULL;
-    sdl_joystick = NULL;
-    if (SDL_NumJoysticks() > 0) {
-	if(SDL_IsGameController(0)) {
-            sdl_gamecontroller = SDL_GameControllerOpen(0);
-        }
-        else {
-            sdl_joystick = SDL_JoystickOpen(0);
-            using_old_joystick_interface = true;
+JoyKey joyCodeToJoyKey(int buttonNumber) {
+// joystick using the classic SDL Joystick interface
+    switch (buttonNumber) {
+        case 0 : return jkY;
+        case 1 : return jkB;
+        case 2 : return jkA;
+        case 3 : return jkX;
+        case 4 : return jkL;
+        case 5 : return jkR;
+        case 6 : return jkLB;
+        case 7 : return jkRB;
+        case 8 : return jkSelect;
+        case 9 : return jkStart;
+    }
+    return jkNone;
+}
+
+int joyGetIndex(SDL_JoystickID id) {
+    int i;
+    for (i=0 ; i < sdl_numjoysticks; i++) {
+        if (SDL_JoystickInstanceID(sdl_joysticks[i]) == id) {
+            return i;
         }
     }
+    return -1;
+}
+
+// To know if it's a gamecontroller when we only have the instanceID
+bool joyIsController (Sint32 instanceID) {
+    int i;
+    bool ret = false;
+    
+    // We can't use SDL_IsGameController after we have physically disconnected a joystick, so we use this workaround.
+    for (i = 0; i < sdl_numcontrollers; i++) {
+        if (SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(sdl_controllers[i])) == instanceID) {
+            ret = true;
+            break;
+        }
+    }
+    return ret;
+}
+
+void joyAdd(int index) {
+    if(SDL_IsGameController(index)) {
+        SDL_GameController *controller = SDL_GameControllerOpen(index);
+        sdl_controllers[index] = controller;
+        sdl_joysticks[index] = SDL_GameControllerGetJoystick(controller);
+        sdl_numcontrollers++;
+    }
+    else {
+        sdl_joysticks[index] = SDL_JoystickOpen(index);
+        sdl_haptics[index] = SDL_HapticOpenFromJoystick(sdl_joysticks[index]);
+        SDL_HapticRumbleInit(sdl_haptics[index]);
+    }
+    // Update number of joysticks
+    sdl_numjoysticks = SDL_NumJoysticks();
+    sdl_numjoysticks = (sdl_numjoysticks < MAX_JOYS )? sdl_numjoysticks : MAX_JOYS;
+}
+
+void joyRemove(Sint32 instanceID) {
+    int i;
+
+    // Closing game controller
+    if (joyIsController(instanceID)) {
+        for (i = 0; i < sdl_numcontrollers; i++) {
+            if (SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(sdl_controllers[i])) == instanceID) {
+                SDL_GameControllerClose(sdl_controllers[i]);
+                sdl_controllers[i] = NULL;
+                sdl_numcontrollers--;
+                sdl_numjoysticks--;
+            }
+        }   
+    }
+    // Closing joystick
+    else {
+        i = joyGetIndex(instanceID);    
+        if (i >= 0) {
+            SDL_JoystickClose(sdl_joysticks[i]);
+            SDL_HapticClose(sdl_haptics[i]);
+            sdl_haptics[i] = NULL;
+            sdl_numjoysticks--;
+        }
+    }
+}
+
+bool inputInit() {
+    int index;
+    joyL = joyR = vec2(0);
+    sdl_numjoysticks = SDL_NumJoysticks();
+    sdl_numjoysticks = (sdl_numjoysticks < MAX_JOYS )? sdl_numjoysticks : MAX_JOYS;
+
+    for (index = 0; index < MAX_JOYS; index++)
+        sdl_joysticks[index] = NULL;
+
+    for (index = 0; index < sdl_numjoysticks; index++)
+        joyAdd(index);
     return true;
 }
 
 void inputFree() {
-    if (sdl_gamecontroller != NULL) {
-        SDL_GameControllerClose(sdl_gamecontroller);
-        sdl_gamecontroller = NULL;
-    }
-    if (sdl_joystick != NULL) {
-        SDL_JoystickClose(sdl_joystick);
-        sdl_joystick = NULL;
+    int i;
+    Sint32 instanceID;
+
+    for (i = 0; i < sdl_numjoysticks; i++) {
+        instanceID = SDL_JoystickInstanceID(sdl_joysticks[i]);
+        joyRemove(instanceID);
     }
 }
-
-#define JOY_DEAD_ZONE_STICK      8192
 
 float joyAxisValue(int value) {
     if (value > -JOY_DEAD_ZONE_STICK && value < JOY_DEAD_ZONE_STICK)
@@ -235,111 +340,230 @@ vec2 joyDir(const vec2 &value) {
 void inputUpdate() {
 // get input events
 
-    int joyIndex = 0; // TODO: joy index
-
+    int joyIndex;
     SDL_Event event;
+
     while (SDL_PollEvent(&event) == 1) { // while there are still events to be processed
         switch (event.type) {
+            case SDL_QUIT:
+                Core::isQuit = true;
+
             case SDL_KEYDOWN: {
-		int scancode = event.key.keysym.scancode;
+                int scancode = event.key.keysym.scancode;
                 InputKey key = codeToInputKey(scancode);
-		if (key != ikNone) {
-		    Input::setDown(key, 1);
-		}
-		break;
-             }
-             case SDL_KEYUP: {
-		int scancode = event.key.keysym.scancode;
-                InputKey key = codeToInputKey(scancode);
-		if (key != ikNone) {
-		    Input::setDown(key, 0);
+                if (key != ikNone) {
+                    Input::setDown(key, 1);
                 }
+
+#ifndef _GAPI_GLES 
+                if (scancode == SDL_SCANCODE_RETURN) {
+                    if (isKeyPressed(SDL_SCANCODE_LALT) && isKeyPressed(SDL_SCANCODE_RETURN)) {
+                        toggleFullscreen();
+                    }
+                }
+#endif
                 break;
-             }
-             case SDL_CONTROLLERBUTTONDOWN: {
-                        JoyKey key = codeToJoyKey(event.cbutton.button);
-                        Input::setJoyDown(joyIndex, key, 1);
+            }
+
+            case SDL_KEYUP: {
+                int scancode = event.key.keysym.scancode;
+                InputKey key = codeToInputKey(scancode);
+                if (key != ikNone)
+                    Input::setDown(key, 0);
+                break;
+            }
+
+            // Joystick reading using the modern SDL GameController interface
+            case SDL_CONTROLLERBUTTONDOWN: {
+                joyIndex = joyGetIndex(event.cbutton.which);
+                JoyKey key = controllerCodeToJoyKey(event.cbutton.button);
+                Input::setJoyDown(joyIndex, key, 1);
+                break;
+            }
+            case SDL_CONTROLLERBUTTONUP: {
+                joyIndex = joyGetIndex(event.cbutton.which);
+                JoyKey key = controllerCodeToJoyKey(event.cbutton.button);
+                Input::setJoyDown(joyIndex, key, 0);
+                break;
+            }
+
+            case SDL_CONTROLLERAXISMOTION: {
+                joyIndex = joyGetIndex(event.caxis.which);
+                switch (event.caxis.axis) {
+                    case SDL_CONTROLLER_AXIS_LEFTX:
+                        joyL.x = joyAxisValue(event.caxis.value);
                         break;
-             }
-             case SDL_CONTROLLERBUTTONUP: {
-                        JoyKey key = codeToJoyKey(event.cbutton.button);
+                    case SDL_CONTROLLER_AXIS_LEFTY:
+                        joyL.y = joyAxisValue(event.caxis.value);
+                        break;
+                    case SDL_CONTROLLER_AXIS_RIGHTX:
+                        joyR.x = joyAxisValue(event.caxis.value);
+                        break;
+                    case SDL_CONTROLLER_AXIS_RIGHTY:
+                        joyR.y = joyAxisValue(event.caxis.value);
+                        break;
+                }
+                Input::setJoyPos(joyIndex, jkL, joyDir(joyL));
+                Input::setJoyPos(joyIndex, jkR, joyDir(joyR));
+                break;
+            }
+
+            // GameController connection or disconnection
+            case SDL_CONTROLLERDEVICEADDED: {
+                 // Upon connection, 'which' is the internal SDL2 joystick index,
+                 // but on disconnection, 'which' is the instanceID.
+                 // We store the joysticks in their corresponding position on the joysticks array,
+                 // IE: joystick with index 3 will be in sdl_joysticks[3].
+                 joyAdd(event.cdevice.which);
+                 break;
+            }
+            case SDL_CONTROLLERDEVICEREMOVED: {
+                joyRemove(event.cdevice.which);
+                break;
+            }
+
+            // Joystick reading using the old SDL Joystick interface
+            case SDL_JOYBUTTONDOWN:
+            case SDL_JOYBUTTONUP:
+            case SDL_JOYAXISMOTION:
+            case SDL_JOYDEVICEADDED:
+            case SDL_JOYDEVICEREMOVED:
+                // Only handle the event if the joystick is incompatible with the SDL_GameController interface.
+                // (Otherwise it will interfere with the normal action of the SDL_GameController API, because
+                // the event is both a GameController event AND a Joystick event.)
+                if (SDL_IsGameController(joyIndex)) {
+                    break;
+                }
+
+                switch (event.type) {
+                    case SDL_JOYBUTTONDOWN: {
+                       joyIndex = joyGetIndex(event.jbutton.which);
+                       JoyKey key = joyCodeToJoyKey(event.jbutton.button);
+                       Input::setJoyDown(joyIndex, key, 1);
+                       break;
+                    }
+                    case SDL_JOYBUTTONUP: {
+                        joyIndex = joyGetIndex(event.jbutton.which);
+                        JoyKey key = joyCodeToJoyKey(event.jbutton.button);
                         Input::setJoyDown(joyIndex, key, 0);
                         break;
-             }
-             case SDL_CONTROLLERAXISMOTION: {
-                 switch (event.caxis.axis) {
-                     case SDL_CONTROLLER_AXIS_LEFTX:
-		            if (event.caxis.value < 0) {
-			        Input::setJoyDown(joyIndex, jkLeft,  1);
-			        Input::setJoyDown(joyIndex, jkRight, 0);
-                            }
-		            if (event.caxis.value > 0) {
-			        Input::setJoyDown(joyIndex, jkRight, 1);
-			        Input::setJoyDown(joyIndex, jkLeft,  0);
-                            } 
-                            if (event.caxis.value == 0) {
-			        Input::setJoyDown(joyIndex, jkRight, 0);
-			        Input::setJoyDown(joyIndex, jkLeft,  0);
-                            }
-		            break;
-                      case SDL_CONTROLLER_AXIS_LEFTY:
-		            if (event.caxis.value < 0) {
-			        Input::setJoyDown(joyIndex, jkUp,  1);
-			        Input::setJoyDown(joyIndex, jkDown, 0);
-                            }
-		            if (event.caxis.value > 0) {
-			        Input::setJoyDown(joyIndex, jkUp, 0);
-			        Input::setJoyDown(joyIndex, jkDown,  1);
-                            } 
-                            if (event.caxis.value == 0) {
-			        Input::setJoyDown(joyIndex, jkUp, 0);
-			        Input::setJoyDown(joyIndex, jkDown,  0);
-                            }
-		            break;
-                 }
-                 break;
-             }
-        }
+                    }
+                    case SDL_JOYAXISMOTION: {
+                        joyIndex = joyGetIndex(event.jaxis.which);
+                        switch (event.jaxis.axis)
+                        {
+                            // In the classic joystick interface we know what axis changed by it's number,
+                            // they have no names like on the fancy GameController interface. 
+                            case 0: joyL.x = joyAxisValue(event.jaxis.value); break;
+                            case 1: joyL.y = joyAxisValue(event.jaxis.value); break;
+                            case 2: joyR.x = joyAxisValue(event.jaxis.value); break;
+                            case 3: joyR.y = joyAxisValue(event.jaxis.value); break;
+                        }
+                        Input::setJoyPos(joyIndex, jkL, joyDir(joyL));
+                        Input::setJoyPos(joyIndex, jkR, joyDir(joyR));
+                        break;
+                    }
 
-        Input::setJoyPos(joyIndex, jkL, joyDir(joyL));
-        Input::setJoyPos(joyIndex, jkR, joyDir(joyR));
-     }
+                    // Joystick connection or disconnection
+                    case SDL_JOYDEVICEADDED: {
+                        // Upon connection, 'which' is the internal SDL2 joystick index,
+                        // but on disconnection, 'which' is the instanceID.
+                        // We store the joysticks in their corresponding position on the joysticks array,
+                        // IE: joystick with index 3 will be in sdl_joysticks[3].
+                        joyAdd(event.jdevice.which);
+                        break;
+                    }
+                    case SDL_JOYDEVICEREMOVED: {
+                         joyRemove(event.jdevice.which);
+                         break;
+                    }
+                    break;
+                }
+        }
+    }
+}
+
+void print_help(int argc, char **argv) {
+    
+    printf("%s [OPTION]\nA open source re-implementation of the classic Tomb Raider engine.\n",
+           argc ? argv[0] : "OpenLara");
+    puts("-d [DIRECTORY]  directory where data files are");
+    puts("-l [FILE]       load a specific level file");
+    puts("-h              print this help");
 }
 
 int main(int argc, char **argv) {
+    
+    cacheDir[0] = saveDir[0] = contentDir[0] = 0;
+    char *lvlName = nullptr;
+
+    int option;
+    while ((option = getopt(argc, argv, "hl:d:")) != -1) {
+        switch(option) {
+            case 'h':
+                print_help(argc, argv);
+                return 0;
+            case 'l':
+               lvlName = optarg;
+               break;
+            case 'd':
+               strncpy(contentDir, optarg, 254);
+               break;
+            case ':':
+                printf("option %c needs a value\n", optopt);
+                print_help(argc, argv);
+                return -1;
+            case '?':
+                printf("unknown option: %c\n", optopt);
+                print_help(argc, argv);
+                return -1;
+            default:
+                break;
+        }
+    }
+
+    size_t contentDirLen = strlen(contentDir);
+
+    if (contentDirLen > 0 &&
+        contentDir[contentDirLen-1] != '/' && contentDir[contentDirLen-1] != '\\' &&
+        contentDirLen < 254) {
+        contentDir[contentDirLen] = '/';
+        contentDir[contentDirLen+1] = '\0';
+    }
 
     int w, h;
-    SDL_DisplayMode current;
+    SDL_GameControllerAddMappingsFromFile("gamecontrollerdb.txt");
+    SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_EVENTS|SDL_INIT_GAMECONTROLLER|SDL_INIT_HAPTIC);
 
+    SDL_GetCurrentDisplayMode(0, &sdl_displaymode);
 
-    SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS|SDL_INIT_GAMECONTROLLER);
-
-    SDL_GetCurrentDisplayMode(0, &current);
+#ifdef _GAPI_GLES
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#endif
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    // We start in fullscreen mode using the vide mode currently in use, to avoid video mode changes.
-    SDL_Window *window = SDL_CreateWindow(WND_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        //current.w, current.h, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP);
-	      640, 480, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-   
+    /* In GLES, start in fullscreen mode using the vide mode currently in use. */
+    sdl_window = SDL_CreateWindow(WND_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+#ifdef _GAPI_GLES
+        sdl_displaymode.w, sdl_displaymode.h, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP
+#else
+        WIN_W, WIN_H, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+#endif
+    ); 
+ 
     // We try to use the current video mode, but we inform the core of whatever mode SDL2 gave us in the end. 
-    SDL_GetWindowSize(window, &w, &h);
+    SDL_GetWindowSize(sdl_window, &w, &h);
 
     Core::width  = w;
     Core::height = h;
 
-    SDL_GLContext context = SDL_GL_CreateContext(window);
-    SDL_GL_SetSwapInterval(0);
-
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1,
-	  SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
+    SDL_GLContext context = SDL_GL_CreateContext(sdl_window);
 
     SDL_ShowCursor(SDL_DISABLE);
-
-    cacheDir[0] = saveDir[0] = contentDir[0] = 0;
 
     const char *home;
     if (!(home = getenv("HOME")))
@@ -360,8 +584,6 @@ int main(int argc, char **argv) {
 
     inputInit();
 
-    char *lvlName = argc > 1 ? argv[1] : NULL;
-
     Game::init(lvlName);
 
     while (!Core::isQuit) {
@@ -370,15 +592,14 @@ int main(int argc, char **argv) {
         if (Game::update()) {
             Game::render();
             Core::waitVBlank();
-	    SDL_GL_SwapWindow(window);
+            SDL_GL_SwapWindow(sdl_window);
         }
     };
 
     sndFree();
     Game::deinit();
 
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
+    SDL_DestroyWindow(sdl_window);
     SDL_Quit();
 
     return 0;

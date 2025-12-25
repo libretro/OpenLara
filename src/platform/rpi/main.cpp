@@ -19,7 +19,7 @@
 // timing
 unsigned int startTime;
 
-int osGetTime() {
+int osGetTimeMS() {
     timeval t;
     gettimeofday(&t, NULL);
     return int((t.tv_sec - startTime) * 1000 + t.tv_usec / 1000);
@@ -197,6 +197,7 @@ int inputDevices[MAX_INPUT_DEVICES];
 udev *udevObj;
 udev_monitor *udevMon;
 int udevMon_fd;
+int joy_centre;
 
 vec2 joyL, joyR;
 
@@ -347,6 +348,10 @@ bool inputInit() {
     }
     udev_enumerate_unref(e);
 
+    const char *temp = getenv("JOY_CENTRE");
+    if (temp && (joy_centre = atoi(temp)))
+        LOG("input: joy centred at %d\n", joy_centre);
+
     return true;
 }
 
@@ -359,11 +364,13 @@ void inputFree() {
 }
 
 #define JOY_DEAD_ZONE_STICK      8192
+#define JOY_CENTRE              32768
 
 float joyAxisValue(int value) {
+    value -= joy_centre ? joy_centre : JOY_CENTRE;
     if (value > -JOY_DEAD_ZONE_STICK && value < JOY_DEAD_ZONE_STICK)
         return 0.0f;
-    return value / 32767.0f;
+    return value / 32768.0f;
 }
 
 float joyTrigger(int value) {
@@ -469,6 +476,34 @@ void inputUpdate() {
 
 EGLDisplay display;
 
+int checkLanguage() {
+    char *lang = getenv("LANG");
+    if (!lang || strlen(lang) < 2) return 0;
+
+    uint16 id;
+    memcpy(&id, lang, 2);
+
+    if (id == TWOCC("en")) return STR_LANG_EN - STR_LANG_EN;
+    if (id == TWOCC("fr")) return STR_LANG_FR - STR_LANG_EN;
+    if (id == TWOCC("de")) return STR_LANG_DE - STR_LANG_EN;
+    if (id == TWOCC("es")) return STR_LANG_ES - STR_LANG_EN;
+    if (id == TWOCC("it")) return STR_LANG_IT - STR_LANG_EN;
+    if (id == TWOCC("pl")) return STR_LANG_PL - STR_LANG_EN;
+    if (id == TWOCC("pt")) return STR_LANG_PT - STR_LANG_EN;
+    if (id == TWOCC("uk")) return STR_LANG_RU - STR_LANG_EN;
+    if (id == TWOCC("be")) return STR_LANG_RU - STR_LANG_EN;
+    if (id == TWOCC("ru")) return STR_LANG_RU - STR_LANG_EN;
+    if (id == TWOCC("ja")) return STR_LANG_JA - STR_LANG_EN;
+    if (id == TWOCC("gr")) return STR_LANG_GR - STR_LANG_EN;
+    if (id == TWOCC("fi")) return STR_LANG_FI - STR_LANG_EN;
+    if (id == TWOCC("cs")) return STR_LANG_CZ - STR_LANG_EN;
+    if (id == TWOCC("zh")) return STR_LANG_CN - STR_LANG_EN;
+    if (id == TWOCC("hu")) return STR_LANG_HU - STR_LANG_EN;
+    if (id == TWOCC("sv")) return STR_LANG_SV - STR_LANG_EN;
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     bcm_host_init();
 
@@ -502,6 +537,8 @@ int main(int argc, char **argv) {
     timeval t;
     gettimeofday(&t, NULL);
     startTime = t.tv_sec;
+    
+    Core::defLang = checkLanguage();
 
     sndInit();
 

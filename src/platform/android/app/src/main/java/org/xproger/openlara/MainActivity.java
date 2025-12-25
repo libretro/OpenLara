@@ -85,8 +85,8 @@ public class MainActivity extends GvrActivity implements OnTouchListener, OnKeyL
         gvrView = view;
 
         try {
-            String content = Environment.getExternalStorageDirectory().getAbsolutePath();
-            wrapper.onCreate(content + "/OpenLara/", getCacheDir().getAbsolutePath() + "/");
+            String content = getExternalFilesDir(null).getAbsolutePath();
+            wrapper.onCreate(content + "/", getCacheDir().getAbsolutePath() + "/");
         } catch (Exception e) {
             e.printStackTrace();
             finish();
@@ -297,6 +297,18 @@ class Wrapper implements GvrView.StereoRenderer {
             id = 7;
         } else if (lang.startsWith("ja")) {
             id = 8;
+        } else if (lang.startsWith("gr")) {
+            id = 9;
+        } else if (lang.startsWith("fi")) {
+            id = 10;
+        } else if (lang.startsWith("cs")) {
+            id = 11;
+        } else if (lang.startsWith("zh")) {
+            id = 12;
+        } else if (lang.startsWith("hu")) {
+            id = 13;
+        } else if (lang.startsWith("sv")) {
+            id = 14;
         }
         return id;
     }
