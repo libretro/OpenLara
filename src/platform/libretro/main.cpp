@@ -123,26 +123,31 @@ void osRWLockWrite(void *obj) {
 #include <sys/time.h>
 unsigned int startTime;
 
-int osGetTime(void)
+int osGetTimeMS(void)
 {
-    timeval t;
-    gettimeofday(&t, NULL);
-    return int((t.tv_sec - startTime) * 1000 + t.tv_usec / 1000);
+   timeval t;
+   gettimeofday(&t, NULL);
+   return int((t.tv_sec - startTime) * 1000 + t.tv_usec / 1000);
+}
+
+const char* osFixFileName(const char* fileName)
+{
+   return fileName;
 }
 #endif
 
 #if defined(__MACH__)
 #include <mach/mach_time.h>
 
-int osGetTime(void)
+int osGetTimeMS(void)
 {
-    const int64_t kOneMillion = 1000 * 1000;
-    static mach_timebase_info_data_t info;
+   const int64_t kOneMillion = 1000 * 1000;
+   static mach_timebase_info_data_t info;
 
-    if (info.denom == 0)
-        mach_timebase_info(&info);
+   if (info.denom == 0)
+      mach_timebase_info(&info);
 
-    return (int)((mach_absolute_time() * info.numer) / (kOneMillion * info.denom));
+   return (int)((mach_absolute_time() * info.numer) / (kOneMillion * info.denom));
 }
 #endif
 
@@ -161,7 +166,7 @@ void retro_init(void)
 {
    contentDir[0] = 0;
 
-   const char slash = path_default_slash_c();
+   const char slash = PATH_DEFAULT_SLASH_C();
 
    const char *sysdir = NULL;
    const char *savdir = NULL;
@@ -508,8 +513,12 @@ void retro_run(void)
 
    updated = Game::update();
    if (updated)
+   {
       Game::render();
-   video_cb(RETRO_HW_FRAME_BUFFER_VALID, width, height, 0);
+      video_cb(RETRO_HW_FRAME_BUFFER_VALID, width, height, 0);
+   }
+   else
+      video_cb(NULL, width, height, 0);
 }
 
 static void context_reset(void)
@@ -517,6 +526,14 @@ static void context_reset(void)
    fprintf(stderr, "Context reset!\n");
    rglgen_resolve_symbols(hw_render.get_proc_address);
 
+   GAPI::updateFBO();
+   glBindFramebuffer(GL_FRAMEBUFFER, GAPI::defaultFBO);
+
+#if defined(__linux__)
+   timeval t;
+   gettimeofday(&t, NULL);
+   startTime = t.tv_sec;
+#endif
    sndData = new Sound::Frame[SND_RATE / FRAMERATE];
    Game::init(levelpath);
 }
@@ -625,7 +642,7 @@ bool retro_load_game(const struct retro_game_info *info)
       return false;
    }
 
-if (!path_is_absolute(info->path))
+   if (!path_is_absolute(info->path))
    {
       fprintf(stderr, "Full path to content is required, exiting...\n");
       return false;
@@ -636,18 +653,21 @@ if (!path_is_absolute(info->path))
 
    // contentDir acts as the current working directory in OpenLara
    strcpy(contentDir, basedir);
-   path_parent_dir(contentDir);
+   path_parent_dir(contentDir, strlen(contentDir));
    fill_pathname_parent_dir_name(basedir, contentDir, sizeof(basedir));
 
-   if (strcmp(basedir, "level") == 0)
+   if (strcmp(basedir, "level") == 0 || strstr(contentDir, "/level") != NULL)
    {
       // level/X/
-      path_parent_dir(contentDir);
+      path_parent_dir(contentDir, strlen(contentDir));
    }
+
    fprintf(stderr, "[openlara]: contentDir: %s\n", contentDir);
 
    // make levelpath contain a path relative to contentDir
    strcpy(levelpath, (info->path+strlen(contentDir)));
+
+   fprintf(stderr, "[openlara]: levelpath: %s\n", levelpath);
 
    Core::width  = width;
    Core::height = height;
@@ -718,7 +738,4 @@ void retro_cheat_set(unsigned index, bool enabled, const char *code)
    (void)index;
    (void)enabled;
    (void)code;
-}
-
-void osToggleVR(bool enable) {
 }

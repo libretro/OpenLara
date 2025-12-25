@@ -2130,7 +2130,7 @@ public:
     }
 
     static bool exists(const char *name) {
-    #ifdef _OS_LINUX
+    #if defined (_OS_LINUX) && !defined(__LIBRETRO__)
        name = osFixFileName(name);
        return (name != NULL);
     #else

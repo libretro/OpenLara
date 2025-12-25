@@ -1402,8 +1402,12 @@ namespace GAPI {
             support.derivatives = GLES3 || _GL_OES_standard_derivatives; 
             support.tex3D       = GLES3;
         #else
-            support.derivatives = true; 
+            support.derivatives = true;
+#ifdef _GAPI_GLES2
+            support.tex3D       = false;
+#else
             support.tex3D       = glTexImage3D != NULL;
+#endif
         #endif
         support.texBorder      = extSupport("_texture_border_clamp");
         support.maxAniso       = extSupport("_texture_filter_anisotropic");
