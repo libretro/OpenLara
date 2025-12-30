@@ -14,25 +14,47 @@
 namespace Game {
     Level      *level;
     Stream     *nextLevel;
-    ControlKey cheatSeq[MAX_CHEAT_SEQUENCE];
+    ControlKey cheatSeq[MAX_PLAYERS][MAX_CHEAT_SEQUENCE];
 
-    void cheatControl(ControlKey key) {
+    void cheatControl(int32 playerIndex) {
+        ControlKey key = Input::lastState[playerIndex];
+
         if (key == cMAX || !level || level->level.isTitle() || level->level.isCutsceneLevel()) return;
-        const ControlKey CHEAT_ALL_WEAPONS[] = { cLook, cWeapon, cDash, cDuck, cDuck, cDash, cRoll, cLook };
-        const ControlKey CHEAT_SKIP_LEVEL[]  = { cDuck, cDash, cLook, cRoll, cWeapon, cLook, cDash, cDuck };
+        const ControlKey CHEAT_ALL_WEAPONS_1[] = { cLook, cWeapon, cDash, cDuck, cDuck, cDash, cRoll, cLook };
+        const ControlKey CHEAT_ALL_WEAPONS_2[] = { cWeapon, cLook, cWeapon, cLook, cWeapon, cLook, cWeapon, cLook };
+        
+        const ControlKey CHEAT_SKIP_LEVEL_1[]  = { cDuck, cDash, cLook, cRoll, cWeapon, cLook, cDash, cDuck };
+        const ControlKey CHEAT_SKIP_LEVEL_2[]  = { cJump, cLook, cJump, cLook, cJump, cLook, cJump, cLook };
+
+        const ControlKey CHEAT_DOZY_MODE[]     = { cWalk, cLook, cWalk, cLook, cWalk, cLook, cWalk, cLook };
 
         for (int i = 0; i < MAX_CHEAT_SEQUENCE - 1; i++)
-            cheatSeq[i] = cheatSeq[i + 1];
-        cheatSeq[MAX_CHEAT_SEQUENCE - 1] = key;
+            cheatSeq[playerIndex][i] = cheatSeq[playerIndex][i + 1];
+        cheatSeq[playerIndex][MAX_CHEAT_SEQUENCE - 1] = key;
+
+        #define CHECK_CHEAT(seq) (!memcmp(&cheatSeq[playerIndex][MAX_CHEAT_SEQUENCE - COUNT(seq)], seq, sizeof(seq)))
 
     // add all weapons
-        if (!memcmp(&cheatSeq[MAX_CHEAT_SEQUENCE - COUNT(CHEAT_ALL_WEAPONS)], CHEAT_ALL_WEAPONS, sizeof(CHEAT_ALL_WEAPONS))) {
+        if (CHECK_CHEAT(CHEAT_ALL_WEAPONS_1) || CHECK_CHEAT(CHEAT_ALL_WEAPONS_2))
+        {
             inventory->addWeapons();
             level->playSound(TR::SND_SCREAM);
         }
+
     // skip level
-        if (!memcmp(&cheatSeq[MAX_CHEAT_SEQUENCE - COUNT(CHEAT_SKIP_LEVEL)], CHEAT_SKIP_LEVEL, sizeof(CHEAT_SKIP_LEVEL)))
+        if (CHECK_CHEAT(CHEAT_SKIP_LEVEL_1) || CHECK_CHEAT(CHEAT_SKIP_LEVEL_2))
+        {
             level->loadNextLevel();
+        }
+
+    // dozy mode
+        if (CHECK_CHEAT(CHEAT_DOZY_MODE))
+        {
+            Lara *lara = (Lara*)level->getLara(playerIndex);
+            if (lara) {
+                lara->setDozy(true);
+            }
+        }
     }
 
     void startLevel(Stream *lvl) {
@@ -52,13 +74,13 @@ namespace Game {
         bool playLogo = level->level.isTitle() && id == TR::LVL_MAX;
         playVideo = playVideo && (id != level->level.id);
 
-        if (level->level.isTitle() && id != TR::LVL_MAX)
+        if (level->level.isTitle() && id != TR::LVL_MAX && !TR::isGameEnded)
             playVideo = false;
 
         level->init(playLogo, playVideo);
 
         UI::game = level;
-        #if !defined(_OS_PSP) && !defined(_OS_CLOVER)
+        #if !defined(INV_GAMEPAD_ONLY)
             UI::helpTipTime = 5.0f;
         #endif
         delete lvl;
@@ -81,14 +103,20 @@ void loadSettings(Stream *stream, void *userData) {
             stream->raw((char*)&Core::settings + 1, stream->size - 1); // read settings data right after version number
         delete stream;
     }
-    
-    #ifdef _OS_ANDROID
-        if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
-            osToggleVR(true);
-    #endif
+
+    if (Core::settings.detail.stereo == Core::Settings::STEREO_VR) {
+        osToggleVR(true);
+    }
 
     Core::settings.version = SETTINGS_VERSION;
     Core::setVSync(Core::settings.detail.vsync != 0);
+
+    #if defined(_GAPI_SW) || defined(_GAPI_GU)
+        Core::settings.detail.filter   = Core::Settings::LOW;
+        Core::settings.detail.lighting = Core::Settings::LOW;
+        Core::settings.detail.shadows  = Core::Settings::LOW;
+        Core::settings.detail.water    = Core::Settings::LOW;
+    #endif
 
     shaderCache = new ShaderCache();
     Game::startLevel((Stream*)userData);
@@ -152,6 +180,8 @@ namespace Game {
         #endif
         char fileName[255];
 
+        TR::isGameEnded = false;
+
         TR::Version version = TR::getGameVersion();
         if (!lvlName)
             TR::getGameLevelFile(fileName, version, TR::getTitleId(version));
@@ -180,9 +210,16 @@ namespace Game {
         Input::update();
         Network::update();
 
-        cheatControl(Input::lastState[0]); 
+        for (int32 i = 0; i < MAX_PLAYERS; i++)
+        {
+            if (level->players[i]) {
+                cheatControl(i);
+            }
+        }
 
-        if (!level->level.isTitle()) {
+        // Only check for cStart if the inventory is not active.
+        // Otherwise if cStart was binded to item selection key in inventory it would reset the player.
+        if (!level->level.isTitle() && !inventory->isActive()) {
             if (Input::lastState[0] == cStart) level->addPlayer(0);
             if (Input::lastState[1] == cStart) level->addPlayer(1);
         }
@@ -198,6 +235,37 @@ namespace Game {
         level->update();
 
         Core::deltaTime = dt;
+    }
+
+    void quickSave() {
+        if (!level || TR::isTitleLevel(level->level.id) || TR::isCutsceneLevel(level->level.id)) {
+            return;
+        }
+        level->saveGame(level->level.id, true, false);
+    }
+
+    void quickLoad(bool forced = false) {
+        if (!level) return;
+
+        int slot = getSaveSlot(level->level.id, true);
+
+        if (slot == -1) {
+            slot = getSaveSlot(level->level.id, false);
+        }
+
+        if (slot > -1) {
+            level->loadGame(slot);
+            if (forced) {
+                level->loadGame(slot);
+                level->loadLevel(saveSlots[slot].getLevelID());
+                level->loadNextLevelData();
+                if (nextLevel) {
+                    startLevel(nextLevel);
+                    nextLevel = NULL;
+                    inventory->titleTimer = 0.0f;
+                }
+            }
+        }
     }
 
     bool update() {
@@ -239,16 +307,12 @@ namespace Game {
 
         if (Input::down[ik5] && !inventory->isActive()) {
             if (level->players[0]->canSaveGame())
-                level->saveGame(level->level.id, true, false);
+                quickSave();
             Input::down[ik5] = false;
         }
 
         if (Input::down[ik9] && !inventory->isActive()) {
-            int slot = getSaveSlot(level->level.id, true);
-            if (slot == -1)
-                slot = getSaveSlot(level->level.id, false);
-            if (slot > -1)
-                level->loadGame(slot);
+            quickLoad();
             Input::down[ik9] = false;
         }
 

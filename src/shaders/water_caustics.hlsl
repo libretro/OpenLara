@@ -8,9 +8,11 @@ struct VS_OUTPUT {
 
 float2 getInvUV(float2 uv, float4 param) {
 	float2 p = (float2(uv.x, -uv.y) * 0.5 + 0.5) * param.zw;
-#ifndef _GAPI_GXM
+
+#ifdef _GAPI_D3D9
 	p.xy += 0.5 * param.xy;
 #endif
+
 	return p;
 }
 
@@ -22,13 +24,13 @@ float2 getUV(float2 uv, float4 param) {
 VS_OUTPUT main(VS_INPUT In) {
 	VS_OUTPUT Out;
 
-	float3 coord  = In.aCoord.xyz * (1.0 / 32767.0);
+	float3 coord  = In.aCoord.xyz * INV_SHORT_HALF;
 
 	float3 rCoord = float3(coord.x, coord.y, 0.0) * uPosScale[1].xzy;
 
 	float2 uv     = getInvUV(rCoord.xy, uTexParam).xy;
-	float2 info   = tex2Dlod(sNormal, float4(uv, 0, 0)).xy;
-	float3 normal = calcNormalV(uv, info.x).xzy;
+	float2 info   = SAMPLE_2D_LOD0(sNormal, uv).xy;
+	float3 normal = calcHeightMapNormal(float2(uv.x + uTexParam.x, uv.y), float2(uv.x, uv.y - uTexParam.y), info.x).xzy;
 
 	float3 light  = float3(0.0, 0.0, 1.0);
 	float3 refOld = refract(-light, float3(0.0, 0.0, 1.0), 0.75);

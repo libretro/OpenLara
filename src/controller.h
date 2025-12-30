@@ -6,11 +6,10 @@
 #include "mesh.h"
 #include "animation.h"
 
-#define GRAVITY     (6.0f * 30.0f)
+#define GRAVITY     6.0f
 #define SPRITE_FPS  10.0f
 
 #define MAX_LAYERS  4
-#define MAX_SPHERES 32
 
 #define UNLIMITED_AMMO  10000
 
@@ -47,6 +46,14 @@ struct ICamera {
     }
 };
 
+struct RoomDesc {
+    int32 index;
+    vec4  portal;
+
+    RoomDesc() {}
+    RoomDesc(int32 index, const vec4 &portal) : index(index), portal(portal) {}
+};
+
 struct IGame {
     virtual ~IGame() {}
     virtual void         loadLevel(TR::LevelID id) {}
@@ -57,7 +64,6 @@ struct IGame {
 
     virtual TR::Level*   getLevel()     { return NULL; }
     virtual MeshBuilder* getMesh()      { return NULL; }
-    virtual Texture*     getAtlas()     { return NULL; }
     virtual ICamera*     getCamera(int index = -1)  { return NULL; }
     virtual Controller*  getLara(int index = 0)     { return NULL; }
     virtual Controller*  getLara(const vec3 &pos)   { return NULL; }
@@ -65,19 +71,20 @@ struct IGame {
     virtual uint16       getRandomBox(uint16 zone, uint16 *zones) { return 0; }
     virtual uint16       findPath(int ascend, int descend, bool big, int boxStart, int boxEnd, uint16 *zones, uint16 **boxes) { return 0; }
     virtual void         flipMap(bool water = true) {}
-    virtual void setClipParams(float clipSign, float clipHeight) {}
     virtual void setWaterParams(float height) {}
     virtual void waterDrop(const vec3 &pos, float radius, float strength) {}
     virtual void setShader(Core::Pass pass, Shader::Type type, bool underwater = false, bool alphaTest = false) {}
     virtual void setRoomParams(int roomIndex, Shader::Type type, float diffuse, float ambient, float specular, float alpha, bool alphaTest = false) {}
     virtual void setupBinding() {}
-    virtual void getVisibleRooms(int *roomsList, int &roomsCount, int from, int to, const vec4 &viewPort, bool water, int count = 0) {}
+    virtual void getVisibleRooms(RoomDesc *roomsList, int &roomsCount, int from, int to, const vec4 &viewPort, bool water, int count = 0) {}
     virtual void renderEnvironment(int roomIndex, const vec3 &pos, Texture **targets, int stride = 0, Core::Pass pass = Core::passAmbient) {}
+    virtual void renderModelFull(int modelIndex, bool underwater, Basis *joints) {}
     virtual void renderCompose(int roomIndex) {}
-    virtual void renderView(int roomIndex, bool water, int roomsCount = 0, int *roomsList = NULL) {}
-    virtual void renderGame(bool showUI) {}
+    virtual void renderView(int roomIndex, bool water, bool showUI, int roomsCount = 0, RoomDesc *roomsList = NULL) {}
+    virtual void renderGame(bool showUI, bool invBG) {}
     virtual void setEffect(Controller *controller, TR::Effect::Type effect) {}
 
+    virtual vec4 projectPoint(const vec4 &p) { return vec4(0.0f); }
     virtual void checkTrigger(Controller *controller, bool heavy) {}
     virtual void shakeCamera(float value, bool add = false) {}
 
@@ -622,7 +629,9 @@ struct Controller {
         return e.isEnemy() ||
                e.isVehicle() ||
                e.isDoor() ||
-               e.type == TR::Entity::SCION_HOLDER;
+               e.type == TR::Entity::SCION_HOLDER ||
+               e.type == TR::Entity::TRAP_BOULDER ||
+               e.type == TR::Entity::MUTANT_EGG_SMALL;
     }
 
     virtual bool activate() {
@@ -777,11 +786,11 @@ struct Controller {
     }
 
     static inline void applyGravity(float &speed) {
-        speed += (speed < 128.0f ? GRAVITY : 30.0f) * Core::deltaTime;
+        speed += (speed < 128.0f ? GRAVITY : 1.0f) * (30.0f * Core::deltaTime);
     }
 
     bool alignToWall(float offset = 0.0f, int quadrant = -1, int maxDist = 0, int maxWidth = 0) {
-        int q  = angleQuadrant(angle.y);
+        int q  = angleQuadrant(angle.y, 0.25f);
         int ix = int(pos.x);
         int iz = int(pos.z);
         int x  = ix & ~1023;
@@ -829,7 +838,7 @@ struct Controller {
 
     int getSpheres(Sphere *spheres) {
         const TR::Model *m = getModel();
-        ASSERT(m->mCount <= MAX_SPHERES);
+        ASSERT(m->mCount <= MAX_JOINTS);
 
         int jFrame = jointsFrame;
         updateJoints();
@@ -846,7 +855,7 @@ struct Controller {
     }
 
     Box getSpheresBox(bool local = false) {
-        Sphere spheres[MAX_SPHERES];
+        Sphere spheres[MAX_JOINTS];
         int count = getSpheres(spheres);
         if (count) {
 
@@ -878,8 +887,8 @@ struct Controller {
         ASSERT(a->mCount <= 34);
         ASSERT(b->mCount <= 34);
 
-        Sphere aSpheres[MAX_SPHERES];
-        Sphere bSpheres[MAX_SPHERES];
+        Sphere aSpheres[MAX_JOINTS];
+        Sphere bSpheres[MAX_JOINTS];
 
         int aCount = getSpheres(aSpheres);
         int bCount = controller->getSpheres(bSpheres);
@@ -1045,17 +1054,17 @@ struct Controller {
     bool trace(const TR::Location &from, TR::Location &to) {
         int rx, rz;
 
-        if (fabsf(to.pos.x - from.pos.x) < fabsf(to.pos.z - from.pos.z)) {
+        if (fabsf(to.pos.x - from.pos.x) > fabsf(to.pos.z - from.pos.z)) {
             rz = traceZ(from, to);
-            if (!rz) return false;
-            rx = traceX(from, to);
-        } else {
             rx = traceX(from, to);
             if (!rx) return false;
+        } else {
+            rx = traceX(from, to);
             rz = traceZ(from, to);
+            if (!rz) return false;
         }
         TR::Room::Sector *sector = level->getSector(to.room, to.pos);
-        return clipHeight(from, to, sector) && rx == 1 && rz == 1;
+        return !(!clipHeight(from, to, sector) || rx != 1 || rz != 1);
     }
 
     bool clipHeight(const TR::Location &from, TR::Location &to, TR::Room::Sector *sector) {
@@ -1324,7 +1333,9 @@ struct Controller {
     }
 
     mat4 getMatrix() {
-        if (level->isCutsceneLevel() && (getEntity().isActor() || getEntity().isLara())) 
+        const TR::Entity &e = getEntity();
+
+        if (level->isCutsceneLevel() && (e.isActor() || e.isLara()) && e.type != TR::Entity::CUT_4) 
             return level->cutMatrix;
 
         if (!lockMatrix) {
@@ -1507,6 +1518,14 @@ struct Controller {
             game->playSound(TR::SND_RICOCHET, pos, Sound::PAN);
     }
 };
+
+struct DummyController : Controller {
+
+    DummyController(IGame *game, int entity) : Controller(game, entity) {}
+
+    virtual void update() {}
+};
+
 
 Controller *Controller::first = NULL;
 

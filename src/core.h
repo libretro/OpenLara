@@ -6,55 +6,120 @@
 #endif
 
 #include <stdio.h>
+#include <memory.h>
 
 #define OS_FILEIO_CACHE
 #define OS_PTHREAD_MT
 
-#ifdef WIN32
+#define USE_CUBEMAP_MIPS
+
+#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
+    #define _OS_WP8      1
+    #define _GAPI_D3D11  1
+
+    #undef OS_PTHREAD_MT
+
+    #define INV_SINGLE_PLAYER
+    #define INV_VIBRATION
+    #define INV_GAMEPAD_ONLY
+#elif __UWP__
+    #define _OS_UWP      1
+    #define _GAPI_D3D11  1
+
+    #ifdef __XB1__
+        #define _OS_XB1
+        #define INV_VIBRATION
+        #define INV_GAMEPAD_ONLY
+    #endif
+
+    #undef OS_PTHREAD_MT
+#elif WIN32
     #define _OS_WIN      1
-#ifdef __LIBRETRO__
-    #define _GAPI_GL     1
-#ifdef __LIBRETRO_GLES__
-    #define _GAPI_GLES   1
-#endif
-#else
     #define _GAPI_GL     1
     //#define _GAPI_D3D9   1
-#endif
+    //#define _GAPI_D3D11  1
     //#define _GAPI_VULKAN 1
+    //#define _GAPI_SW     1
+
     //#define _NAPI_SOCKET
 
     #include <windows.h>
 
     #undef OS_PTHREAD_MT
+
+    #ifdef _GAPI_GL
+        #define VR_SUPPORT
+    #endif
+
+    #define INV_VIBRATION
+    #define INV_QUALITY
 #elif ANDROID
     #define _OS_ANDROID 1
     #define _GAPI_GL    1
     #define _GAPI_GLES  1
     //#define _GAPI_VULKAN
 
-    extern void osToggleVR(bool enable);
+    #define VR_SUPPORT
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __SDL2__
     #define _GAPI_GL   1
-#ifdef SDL2GLES
-    #define _GAPI_GLES 1
-    #define DYNGEOM_NO_VBO
-#endif
+    #ifdef SDL2_GLES
+        #define _GAPI_GLES 1
+        #define DYNGEOM_NO_VBO
+    #endif
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __RPI__
     #define _OS_RPI    1
     #define _GAPI_GL   1
     #define _GAPI_GLES 1
 
     #define DYNGEOM_NO_VBO
+    #define INV_VIBRATION
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __CLOVER__
     #define _OS_CLOVER 1
     #define _GAPI_GL   1
     #define _GAPI_GLES 1
 
     #define DYNGEOM_NO_VBO
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
+    #define INV_STEREO
+#elif __PSC__
+    #define _OS_PSC    1
+    #define _GAPI_GL   1
+    #define _GAPI_GLES 1
+
+    #define DYNGEOM_NO_VBO
+    #define INV_GAMEPAD_ONLY
+    #define INV_STEREO
+#elif __BITTBOY__ || __MIYOO__
+    #define _OS_BITTBOY 1
+    #define _OS_LINUX   1
+    #define _GAPI_SW    1
+#elif __GCW0__
+    #define _OS_GCW0   1
+    #define _GAPI_GL   1
+    #define _GAPI_GLES 1
+
+    #define DYNGEOM_NO_VBO
+
+    // etnaviv driver has a bug with cubemap mips generator
+    #undef USE_CUBEMAP_MIPS
+
+    #define INV_SINGLE_PLAYER
+    #define INV_VIBRATION
+    #define INV_GAMEPAD_ONLY
 #elif __linux__
     #define _OS_LINUX 1
     #define _GAPI_GL  1
+
+    #define INV_VIBRATION
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __APPLE__
     #define _GAPI_GL 1
     #include "TargetConditionals.h"
@@ -64,7 +129,9 @@
         #define _GAPI_GLES 1
     #else
         #define _OS_MAC    1
+        #define INV_STEREO
     #endif
+    #define INV_QUALITY
 #elif __EMSCRIPTEN__
     #define _OS_WEB    1
     #define _GAPI_GL   1
@@ -73,29 +140,85 @@
     #undef  OS_FILEIO_CACHE
 
     extern int WEBGL_VERSION;
+
+    #define INV_QUALITY
+    #define INV_STEREO
+#elif _3DS
+    #include <3ds.h>
+
+    #define _OS_3DS    1
+    #define _GAPI_C3D  1
+
+    #undef OS_PTHREAD_MT
+    #undef USE_CUBEMAP_MIPS
+    #define USE_ATLAS_RGBA16
+
+    // for 2352 stereo samples
+    // stb_vorbis - 8 ms
+    // libvorbis  - 6 ms
+    #define USE_LIBVORBIS
+
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
+    //#define INV_STEREO // hardware switch
 #elif _PSP
     #define _OS_PSP  1
     #define _GAPI_GU 1
 
-    #define FFP
     #define TEX_SWIZZLE
     //#define EDRAM_MESH
     #define EDRAM_TEX
 
     #undef OS_PTHREAD_MT
+
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
 #elif __vita__
     #define _OS_PSV   1
     #define _GAPI_GXM 1
 
     #undef OS_PTHREAD_MT
-#elif __SWITCH__
-   #define _OS_NX     1
-   #define _GAPI_GL   1
 
-   #undef OS_PTHREAD_MT
+    //#define USE_LIBVORBIS // TODO crash
+
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
+#elif __SWITCH__
+    #define _OS_SWITCH 1
+    #define _GAPI_GL   1
+
+    #undef OS_PTHREAD_MT
+    #define INV_QUALITY
+    #define INV_STEREO
+#elif _XBOX
+    #define _OS_XBOX   1
+    #define _GAPI_D3D8 1
+
+    #undef OS_PTHREAD_MT
+    #undef USE_CUBEMAP_MIPS
+
+    #define NOMINMAX
+    #include <xtl.h>
+    #include <xgraphics.h>
+
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
+    #define INV_VIBRATION
+#elif _X360
+    #define _OS_X360  1
+    // TODO
+#elif __NDLESS__
+    #define _OS_TNS   1
+    #define _GAPI_SW  1
+    #include <os.h>
+
+    #undef OS_PTHREAD_MT
 #endif
 
-#ifndef _OS_PSP
+#if !defined(_OS_PSP) && !defined(_OS_TNS)
     #define USE_INFLATE
 #endif
 
@@ -103,28 +226,44 @@
     #include "libs/tinf/tinf.h"
 #endif
 
+#if defined(_GAPI_SW) || defined(_GAPI_GU)
+    #define FFP
+#endif
+
 #ifdef FFP
     #define SPLIT_BY_TILE
-    #ifdef _OS_PSP
+    #if defined(_GAPI_GU)
         #define SPLIT_BY_CLUT
     #endif
 #else
-    #define MERGE_MODELS
+    // current etnaviv driver implementation uses uncompatible Mesa GLSL compiler
+    // it produce unimplemented TRUNC/ARL instructions instead of F2I
+    // so we can't use joints indexing in the shader (see MESH_SKINNING)
+    #ifndef _OS_GCW0
+        #define MERGE_MODELS
+    #endif
     #define MERGE_SPRITES
     #define GENERATE_WATER_PLANE
 #endif
 
 #include "utils.h"
 
-// muse be equal with base shader
-#define SHADOW_TEX_SIZE      1024
+#if defined(_OS_3DS)
+    #define SHADOW_TEX_SIZE      512
+#elif defined(_OS_GCW0)
+    #define SHADOW_TEX_SIZE      256
+#elif defined(_OS_PSV)
+    #define SHADOW_TEX_SIZE      1024
+#else
+    #define SHADOW_TEX_SIZE      2048
+#endif
 
 extern void* osMutexInit     ();
 extern void  osMutexFree     (void *obj);
 extern void  osMutexLock     (void *obj);
 extern void  osMutexUnlock   (void *obj);
 
-extern int   osGetTime       ();
+extern int   osGetTimeMS     ();
 
 extern bool  osJoyReady      (int index);
 extern void  osJoyVibrate    (int index, float L, float R);
@@ -137,6 +276,9 @@ enum InputKey { ikNone,
     ik0, ik1, ik2, ik3, ik4, ik5, ik6, ik7, ik8, ik9,
     ikA, ikB, ikC, ikD, ikE, ikF, ikG, ikH, ikI, ikJ, ikK, ikL, ikM,
     ikN, ikO, ikP, ikQ, ikR, ikS, ikT, ikU, ikV, ikW, ikX, ikY, ikZ,
+    ikN0, ikN1, ikN2, ikN3, ikN4, ikN5, ikN6, ikN7, ikN8, ikN9, ikNAdd, ikNSub, ikNMul, ikNDiv, ikNDot, 
+    ikF1, ikF2, ikF3, ikF4, ikF5, ikF6, ikF7, ikF8, ikF9, ikF10, ikF11, ikF12,
+    ikMinus, ikPlus, ikLSB, ikRSB, ikSlash, ikBSlash, ikComma, ikDot, ikTilda, ikColon, ikApos, ikPrev, ikNext, ikHome, ikEnd, ikDel, ikIns, ikBack,
 // mouse
     ikMouseL, ikMouseR, ikMouseM,
 // touch
@@ -177,10 +319,10 @@ namespace Core {
     struct Mutex {
         void *obj;
     
-        Mutex()       { obj = osMutexInit(); }
-        ~Mutex()      { osMutexFree(obj);    }
-        void lock()   { osMutexLock(obj);    }
-        void unlock() { osMutexUnlock(obj);  }
+        Mutex()       { obj = osMutexInit();          }
+        ~Mutex()      { if (obj) osMutexFree(obj);    }
+        void lock()   { if (obj) osMutexLock(obj);    }
+        void unlock() { if (obj) osMutexUnlock(obj);  }
     };
     
     struct Lock {
@@ -197,30 +339,34 @@ namespace Core {
     struct Support {
         int  maxVectors;
         int  maxAniso;
+        int  texMinSize;
         bool shaderBinary;
         bool VAO;
+        bool VBO;
         bool depthTexture;
         bool shadowSampler;
         bool discardFrame;
+        bool derivatives;
         bool texNPOT;
         bool tex3D;
         bool texRG;
         bool texBorder;
+        bool texMaxLevel;
         bool colorFloat, texFloat, texFloatLinear;
         bool colorHalf, texHalf,  texHalfLinear;
-        bool clipDist;
     #ifdef PROFILE
         bool profMarker;
         bool profTiming;
     #endif
     } support;
 
-#define SETTINGS_VERSION 6
+#define SETTINGS_VERSION 7
 #define SETTINGS_READING 0xFF
 
     struct Settings {
         enum Quality  { LOW, MEDIUM, HIGH };
-        enum Stereo   { STEREO_OFF, STEREO_ON, STEREO_SPLIT, STEREO_VR };
+        enum Stereo   { STEREO_OFF, STEREO_SBS, STEREO_ANAGLYPH, STEREO_SPLIT, STEREO_VR };
+        enum Scale    { SCALE_25, SCALE_50, SCALE_75, SCALE_100 };
 
         uint8 version;
 
@@ -235,6 +381,7 @@ namespace Core {
                 uint8 quality[4];
             };
             uint8 simple;
+            uint8 scale;
             uint8 vsync;
             uint8 stereo;
             void setFilter(Quality value) {
@@ -244,7 +391,7 @@ namespace Core {
             }
 
             void setLighting(Quality value) {
-            #ifdef _OS_PSP
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 lighting = LOW;
             #else
                 lighting = value;
@@ -252,7 +399,7 @@ namespace Core {
             }
 
             void setShadows(Quality value) {
-            #ifdef _OS_PSP
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 shadows = LOW;
             #else
                 shadows = value;
@@ -260,13 +407,19 @@ namespace Core {
             }
 
             void setWater(Quality value) {
-            #ifdef _OS_PSP
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 water = LOW;
             #else
                 if (value > LOW && !(support.texFloat || support.texHalf))
                     value = LOW;
+                if (value > MEDIUM && !support.derivatives)
+                    value = MEDIUM;
                 water = value;
             #endif
+            }
+
+            bool isStereo() {
+                return stereo == STEREO_SBS || stereo == STEREO_ANAGLYPH || stereo == STEREO_VR;
             }
         } detail;
 
@@ -295,7 +448,7 @@ namespace Core {
     bool isQuit;
 
     int getTime() {
-        return osGetTime();
+        return osGetTimeMS();
     }
 
     void resetTime() {
@@ -308,6 +461,32 @@ namespace Core {
     }
 }
 
+#ifdef VR_SUPPORT
+extern void osToggleVR(bool enable);
+#else
+void osToggleVR(bool enable) {
+    Core::settings.detail.stereo = Core::Settings::STEREO_OFF;
+}
+#endif
+
+#ifdef PROFILE
+    struct TimingCPU {
+        int &result;
+
+        TimingCPU(int &result) : result(result) {
+            result = Core::getTime();
+        }
+
+        ~TimingCPU() {
+            result = Core::getTime() - result;
+        }
+    };
+
+    #define PROFILE_CPU_TIMING(result)  TimingCPU timingCPU(result)
+#else
+    #define PROFILE_CPU_TIMING(result)
+#endif
+
 #include "input.h"
 #include "sound.h"
 
@@ -317,6 +496,7 @@ namespace Core {
     #include "napi_dummy.h"
 #endif
 
+#define LIGHT_STACK_SIZE     1
 #define MAX_LIGHTS           4
 #define MAX_RENDER_BUFFERS   32
 #define MAX_CONTACTS         15
@@ -335,22 +515,23 @@ namespace GAPI {
 enum RenderState {
     RS_TARGET           = 1 << 0,
     RS_VIEWPORT         = 1 << 1,
-    RS_DEPTH_TEST       = 1 << 2,
-    RS_DEPTH_WRITE      = 1 << 3,
-    RS_COLOR_WRITE_R    = 1 << 4,
-    RS_COLOR_WRITE_G    = 1 << 5,
-    RS_COLOR_WRITE_B    = 1 << 6,
-    RS_COLOR_WRITE_A    = 1 << 7,
+    RS_SCISSOR          = 1 << 2,
+    RS_DEPTH_TEST       = 1 << 3,
+    RS_DEPTH_WRITE      = 1 << 4,
+    RS_COLOR_WRITE_R    = 1 << 5,
+    RS_COLOR_WRITE_G    = 1 << 6,
+    RS_COLOR_WRITE_B    = 1 << 7,
+    RS_COLOR_WRITE_A    = 1 << 8,
     RS_COLOR_WRITE      = RS_COLOR_WRITE_R | RS_COLOR_WRITE_G | RS_COLOR_WRITE_B | RS_COLOR_WRITE_A,
-    RS_CULL_BACK        = 1 << 8,
-    RS_CULL_FRONT       = 1 << 9,
+    RS_CULL_BACK        = 1 << 9,
+    RS_CULL_FRONT       = 1 << 10,
     RS_CULL             = RS_CULL_BACK | RS_CULL_FRONT,
-    RS_BLEND_ALPHA      = 1 << 10,
-    RS_BLEND_ADD        = 1 << 11,
-    RS_BLEND_MULT       = 1 << 12,
-    RS_BLEND_PREMULT    = 1 << 13,
+    RS_BLEND_ALPHA      = 1 << 11,
+    RS_BLEND_ADD        = 1 << 12,
+    RS_BLEND_MULT       = 1 << 13,
+    RS_BLEND_PREMULT    = 1 << 14,
     RS_BLEND            = RS_BLEND_ALPHA | RS_BLEND_ADD | RS_BLEND_MULT | RS_BLEND_PREMULT,
-    RS_DISCARD          = 1 << 14,
+    RS_DISCARD          = 1 << 15,
 };
 
 // Texture image format
@@ -368,15 +549,17 @@ enum TexFormat {
 
 // Texture options
 enum TexOption {
-    OPT_REPEAT  = 0x0001,
-    OPT_CUBEMAP = 0x0002,
-    OPT_VOLUME  = 0x0004,
-    OPT_MIPMAPS = 0x0008, 
-    OPT_NEAREST = 0x0010,
-    OPT_TARGET  = 0x0020,
-    OPT_VERTEX  = 0x0040,
-    OPT_DEPEND  = 0x0080,
-    OPT_PROXY   = 0x0100,
+    OPT_REPEAT      = 0x0001,
+    OPT_CUBEMAP     = 0x0002,
+    OPT_VOLUME      = 0x0004,
+    OPT_MIPMAPS     = 0x0008,
+    OPT_NEAREST     = 0x0010,
+    OPT_TARGET      = 0x0020,
+    OPT_VERTEX      = 0x0040,
+    OPT_DYNAMIC     = 0x0080,
+    OPT_DEPEND      = 0x0100,
+    OPT_PROXY       = 0x0200,
+    OPT_VRAM_3DS    = 0x0400,
 };
 
 // Pipeline State Object
@@ -389,7 +572,11 @@ struct PSO {
     uint32     renderState;
 };
 
-typedef uint16 Index;
+#if !defined(FFP) && (defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_MAC) || defined(_OS_WEB))
+    typedef uint32 Index;
+#else
+    typedef uint16 Index;
+#endif
 
 struct Edge {
     Index a, b;
@@ -400,7 +587,7 @@ struct Edge {
 
 struct Vertex {
     short4 coord;      // xyz  - position, w - joint index (for entities only)
-    short4 normal;     // xyz  - vertex normal, w - unused
+    short4 normal;     // xyz  - vertex normal, w - quad(0) or triangle (1)
     short4 texCoord;   // xy   - texture coordinates, zw - trapezoid warping
     ubyte4 color;      // for non-textured geometry
     ubyte4 light;      // xyz  - color, w - use premultiplied alpha
@@ -430,11 +617,9 @@ struct MeshRange {
     E( sNormal          ) \
     E( sReflect         ) \
     E( sShadow          ) \
-    E( sEnvironment     ) \
     E( sMask            )
 
 #define SHADER_UNIFORMS(E) \
-    E( uFlags           ) \
     E( uParam           ) \
     E( uTexParam        ) \
     E( uViewProj        ) \
@@ -478,11 +663,11 @@ struct MeshRange {
     E( FILTER_DOWNSAMPLE_DEPTH ) \
     E( FILTER_GRAYSCALE        ) \
     E( FILTER_BLUR             ) \
+    E( FILTER_ANAGLYPH         ) \
     E( FILTER_EQUIRECTANGULAR  ) \
     /* options */ \
     E( UNDERWATER      ) \
     E( ALPHA_TEST      ) \
-    E( CLIP_PLANE      ) \
     E( OPT_AMBIENT     ) \
     E( OPT_SHADOW      ) \
     E( OPT_CONTACT     ) \
@@ -504,23 +689,14 @@ const char *UniformName[uMAX] = { SHADER_UNIFORMS(DECL_STR) };
 #undef SHADER_SAMPLERS
 #undef SHADER_UNIFORMS
 
-enum CullMode  { cmNone, cmBack,  cmFront };
+enum CullMode  { cmNone, cmBack,  cmFront, cmMAX };
 enum BlendMode { bmNone, bmAlpha, bmAdd, bmMult, bmPremult, bmMAX };
-
-struct Viewport {
-    int x, y, width, height;
-
-    Viewport() : x(0), y(0), width(0), height(0) {}
-    Viewport(int x, int y, int width, int height) : x(x), y(y), width(width), height(height) {}
-
-    inline bool operator == (const Viewport &vp) const { return x == vp.x && y == vp.y && width == vp.width && height == vp.height; }
-    inline bool operator != (const Viewport &vp) const { return !(*this == vp); }
-};
 
 namespace Core {
     float eye;
+    float aspectFix = 1.0f;
     Texture *eyeTex[2];
-    Viewport viewport, viewportDef;
+    short4 viewport, viewportDef, scissor;
     mat4 mModel, mView, mProj, mViewProj, mViewInv;
     mat4 mLightProj;
     Basis basis;
@@ -528,8 +704,13 @@ namespace Core {
     vec4 lightPos[MAX_LIGHTS];
     vec4 lightColor[MAX_LIGHTS];
     vec4 params;
-    vec4 fogParams;
     vec4 contacts[MAX_CONTACTS];
+
+    struct LightStack {
+        vec4 pos[MAX_LIGHTS];
+        vec4 color[MAX_LIGHTS];
+    } lightStack[LIGHT_STACK_SIZE];
+    int lightStackCount;
 
     Texture *whiteTex, *whiteCube, *blackTex, *ditherTex, *noiseTex, *perlinTex;
 
@@ -547,7 +728,8 @@ namespace Core {
         int32         renderState;
         uint32        targetFace;
         uint32        targetOp;
-        Viewport      viewport; // TODO: ivec4
+        short4        viewport; // x, y, width, height
+        short4        scissor;  // x, y, width, height
         vec4          material;
 
     #ifdef _GAPI_GL
@@ -558,6 +740,10 @@ namespace Core {
 
     #ifdef _GAPI_GXM
         Vertex *vBuffer;
+    #endif
+
+    #ifdef _GAPI_C3D
+        void *VAO;
     #endif
 
         int32       basisCount;
@@ -575,6 +761,7 @@ namespace Core {
         int fpsTime;
     #ifdef PROFILE
         int tFrame;
+        int video;
     #endif
 
         Stats() : frame(0), frameIndex(0), fps(0), fpsTime(0) {}
@@ -585,11 +772,11 @@ namespace Core {
 
         void stop() {
             if (fpsTime < Core::getTime()) {
-#ifndef __LIBRETRO__
-                LOG("FPS: %d DIP: %d TRI: %d RT: %d CB: %d\n", fps, dips, tris, rt, cb);
-#endif
+                LOG("FPS: %d DIP: %d TRI: %d RT: %d\n", fps, dips, tris, rt);
             #ifdef PROFILE
                 LOG("frame time: %d mcs\n", tFrame / 1000);
+                LOG("sound: mix %d rev %d ren %d/%d ogg %d\n", Sound::stats.mixer, Sound::stats.reverb, Sound::stats.render[0], Sound::stats.render[1], Sound::stats.ogg);
+                LOG("video: %d\n", video);
             #endif
                 fps     = frame;
                 frame   = 0;
@@ -602,18 +789,24 @@ namespace Core {
     } stats;
 }
 
-#ifdef _GAPI_GL
-    #include "gapi_gl.h"
+#ifdef _GAPI_SW
+    #include "gapi/sw.h"
+#elif _GAPI_GL
+    #include "gapi/gl.h"
+#elif _GAPI_D3D8
+    #include "gapi/d3d8.h"
 #elif _GAPI_D3D9
-    #include "gapi_d3d9.h"
-#elif _GAPI_GX
-    #include "gapi_gx.h"
+    #include "gapi/d3d9.h"
+#elif _GAPI_D3D11
+    #include "gapi/d3d11.h"
+#elif _OS_3DS
+    #include "gapi/c3d.h"
 #elif _GAPI_GU
-    #include "gapi_gu.h"
+    #include "gapi/gu.h"
 #elif _GAPI_GXM
-    #include "gapi_gxm.h"
+    #include "gapi/gxm.h"
 #elif _GAPI_VULKAN
-    #include "gapi_vk.h"
+    #include "gapi/vk.h"
 #endif
 
 #include "texture.h"
@@ -660,9 +853,16 @@ namespace Core {
     }
 
     void init() {
-        memset(&support, 0, sizeof(support));
         LOG("OpenLara (%s)\n", version);
+
         x = y = 0;
+        eyeTex[0] = eyeTex[1] = NULL;
+        lightStackCount = 0;
+
+        memset(&support, 0, sizeof(support));
+        support.texMinSize  = 1;
+        support.texMaxLevel = true;
+        support.derivatives = true;
 
         #ifdef USE_INFLATE
             tinf_init();
@@ -676,6 +876,13 @@ namespace Core {
 
         GAPI::init();
 
+        #ifdef _OS_3DS
+            Core::eyeTex[0] = new Texture(Core::width, Core::height, 1, TexFormat::FMT_RGB16, OPT_TARGET | OPT_PROXY);
+            Core::eyeTex[1] = new Texture(Core::width, Core::height, 1, TexFormat::FMT_RGB16, OPT_TARGET | OPT_PROXY);
+            GAPI::Texture *outputTex[2] = { Core::eyeTex[0], Core::eyeTex[1] };
+            GAPI::initOutput(outputTex);
+        #endif
+
         LOG("cache    : %s\n", cacheDir);
         LOG("supports :\n");
         LOG("  variyngs count : %d\n", support.maxVectors);
@@ -688,7 +895,7 @@ namespace Core {
         LOG("  3D   textures  : %s\n", support.tex3D         ? "true" : "false");
         LOG("  RG   textures  : %s\n", support.texRG         ? "true" : "false");
         LOG("  border color   : %s\n", support.texBorder     ? "true" : "false");
-        LOG("  clip distance  : %s\n", support.clipDist      ? "true" : "false");
+        LOG("  max level      : %s\n", support.texMaxLevel   ? "true" : "false");
         LOG("  anisotropic    : %d\n", support.maxAniso);
         LOG("  float textures : float = %s, half = %s\n", 
             support.colorFloat ? "full" : (support.texFloat ? (support.texFloatLinear ? "linear" : "nearest") : "false"),
@@ -703,12 +910,15 @@ namespace Core {
         }
         eye = 0.0f;
 
-        { // init 1x1 textures
-            uint32 data = 0xFFFFFFFF;
-            whiteTex  = new Texture(1, 1, 1, FMT_RGBA, OPT_NEAREST, &data);
-            whiteCube = new Texture(1, 1, 1, FMT_RGBA, OPT_CUBEMAP, &data);
-            data = 0;
-            blackTex  = new Texture(1, 1, 1, FMT_RGBA, OPT_NEAREST, &data);
+        { // init dummy textures
+            int size = SQR(support.texMinSize) * 6;
+            uint32 *data = new uint32[size];
+            memset(data, 0xFF, size * sizeof(data[0]));
+            whiteTex  = new Texture(support.texMinSize, support.texMinSize, 1, FMT_RGBA, OPT_NEAREST, data);
+            whiteCube = new Texture(support.texMinSize, support.texMinSize, 1, FMT_RGBA, OPT_CUBEMAP, data);
+            memset(data, 0x00, size * sizeof(data[0]));
+            blackTex  = new Texture(support.texMinSize, support.texMinSize, 1, FMT_RGBA, OPT_NEAREST, data);
+            delete[] data;
         }
 
         { // generate dithering texture
@@ -749,8 +959,9 @@ namespace Core {
         settings.detail.simple       = false;
         settings.detail.vsync        = true;
         settings.detail.stereo       = Settings::STEREO_OFF;
-        settings.audio.music         = 14;
-        settings.audio.sound         = 14;
+        settings.detail.scale        = Settings::SCALE_100;
+        settings.audio.music         = SND_MAX_VOLUME;
+        settings.audio.sound         = SND_MAX_VOLUME;
         settings.audio.reverb        = true;
         settings.audio.subtitles     = true;
         settings.audio.language      = defLang;
@@ -818,11 +1029,36 @@ namespace Core {
     #ifdef _OS_WEB
         settings.controls[0].keys[ cJump      ].key = ikD;
         settings.controls[0].keys[ cInventory ].key = ikTab;
+
+        settings.audio.music = 14;
+        settings.audio.sound = 14;
     #endif
 
     #if defined(_OS_RPI) || defined(_OS_CLOVER)
         settings.detail.setShadows  (Core::Settings::LOW);
         settings.detail.setLighting (Core::Settings::MEDIUM);
+    #endif
+
+    #if defined(_OS_GCW0)
+        settings.detail.setFilter   (Core::Settings::MEDIUM);
+        settings.detail.setShadows  (Core::Settings::MEDIUM);
+        settings.detail.setLighting (Core::Settings::MEDIUM);
+        settings.audio.subtitles = false;
+    #endif
+
+    #ifdef _OS_PSC
+        settings.detail.setLighting (Core::Settings::MEDIUM);
+        settings.detail.setShadows  (Core::Settings::LOW);
+        settings.detail.setWater    (Core::Settings::LOW);
+    #endif
+
+    #ifdef _OS_3DS
+        settings.detail.setFilter   (Core::Settings::MEDIUM);
+        settings.detail.setLighting (Core::Settings::LOW);
+        settings.detail.setShadows  (Core::Settings::LOW);
+        settings.detail.setWater    (Core::Settings::LOW);
+
+        settings.audio.reverb = false;
     #endif
 
     #ifdef FFP
@@ -836,6 +1072,27 @@ namespace Core {
         settings.audio.reverb = false;
     #endif
 
+    #ifdef _OS_PSV
+        settings.detail.setFilter   (Core::Settings::HIGH);
+        settings.detail.setLighting (Core::Settings::LOW);
+        settings.detail.setShadows  (Core::Settings::MEDIUM);
+        settings.detail.setWater    (Core::Settings::MEDIUM);
+    #endif
+
+    #ifdef _OS_XBOX
+        settings.detail.setFilter   (Core::Settings::HIGH);
+        settings.detail.setLighting (Core::Settings::LOW);
+        settings.detail.setShadows  (Core::Settings::LOW);
+        settings.detail.setWater    (Core::Settings::LOW);
+    #endif
+
+    #ifdef _OS_WP8
+        settings.detail.setFilter(Core::Settings::HIGH);
+        settings.detail.setLighting(Core::Settings::LOW);
+        settings.detail.setShadows(Core::Settings::LOW);
+        settings.detail.setWater(Core::Settings::LOW);
+    #endif
+
         memset(&active, 0, sizeof(active));
         renderState = 0;
 
@@ -843,6 +1100,8 @@ namespace Core {
     }
 
     void deinit() {
+        delete eyeTex[0];
+        delete eyeTex[1];
         delete whiteTex;
         delete whiteCube;
         delete blackTex;
@@ -853,6 +1112,7 @@ namespace Core {
         GAPI::deinit();
         NAPI::deinit();
         Sound::deinit();
+        Stream::deinit();
     }
 
     void setVSync(bool enable) {
@@ -882,7 +1142,7 @@ namespace Core {
             GAPI::discardTarget(!(active.targetOp & RT_STORE_COLOR), !(active.targetOp & RT_STORE_DEPTH));
 
             GAPI::Texture *target = reqTarget.texture;
-            uint32  face          = reqTarget.face;
+            uint32 face           = reqTarget.face;
 
             if (target != active.target || face != active.targetFace) {
                 Core::stats.rt++;
@@ -907,6 +1167,14 @@ namespace Core {
                 GAPI::setViewport(viewport);
             }
             renderState &= ~RS_VIEWPORT;
+        }
+
+        if (mask & RS_SCISSOR) {
+            if (scissor != active.scissor) {
+                active.scissor = scissor;
+                GAPI::setScissor(scissor);
+            }
+            renderState &= ~RS_SCISSOR;
         }
 
         if (mask & RS_DEPTH_TEST)
@@ -939,21 +1207,26 @@ namespace Core {
         GAPI::setClearColor(color);
     }
 
-    void setViewport(const Viewport &vp) {
-        viewport = vp;
+    void setViewport(const short4 &v) {
+        viewport = v;
         renderState |= RS_VIEWPORT;
     }
 
     void setViewport(int x, int y, int width, int height) {
-        setViewport(Viewport(x, y, width, height));
+        setViewport(short4(x, y, width, height));
+    }
+
+    void setScissor(const short4 &s) {
+        scissor = s;
+        renderState |= RS_SCISSOR;
     }
 
     void setCullMode(CullMode mode) {
         renderState &= ~RS_CULL;
         switch (mode) {
-            case cmNone  : break;
             case cmBack  : renderState |= RS_CULL_BACK;  break;
             case cmFront : renderState |= RS_CULL_FRONT; break;
+            default      : ;
         }
     }
 
@@ -1008,6 +1281,8 @@ namespace Core {
         else
             setViewport(0, 0, color->origWidth, color->origHeight);
 
+        setScissor(viewport);
+
         reqTarget.texture = color;
         reqTarget.op      = op;
         reqTarget.face    = face;
@@ -1018,13 +1293,26 @@ namespace Core {
         Core::active.basis      = basis;
         Core::active.basisCount = count;
 
-        Core::active.shader->setParam(uBasis, basis[0], count);
+    #ifndef MERGE_MODELS
+        count = min(1, count);
+    #endif
+
+        Core::active.shader->setParam(uBasis, *(vec4*)basis, count * 2);
     }
 
     void setMaterial(float diffuse, float ambient, float specular, float alpha) {
         Core::active.material = vec4(diffuse, ambient, specular, alpha);
 
         Core::active.shader->setParam(uMaterial, Core::active.material);
+    }
+
+    void setFog(const vec4 &params) {
+    #if defined(_GAPI_D3D8) || defined(_GAPI_C3D) || defined(_GAPI_SW) || defined(FFP)
+        GAPI::setFog(params);
+    #else
+        ASSERT(Core::active.shader);
+        Core::active.shader->setParam(uFogParams, params);
+    #endif
     }
 
     void updateLights() {
@@ -1036,6 +1324,21 @@ namespace Core {
             lightPos[i]   = vec4(0, 0, 0, 0);
             lightColor[i] = vec4(0, 0, 0, 1);
         }
+        updateLights();
+    }
+
+    void pushLights() {
+        ASSERT(lightStackCount < LIGHT_STACK_SIZE);
+        memcpy(lightStack[lightStackCount].pos,   lightPos,   sizeof(lightPos));
+        memcpy(lightStack[lightStackCount].color, lightColor, sizeof(lightColor));
+        lightStackCount++;
+    }
+
+    void popLights() {
+        ASSERT(lightStackCount > 0);
+        lightStackCount--;
+        memcpy(lightPos,   lightStack[lightStackCount].pos,   sizeof(lightPos));
+        memcpy(lightColor, lightStack[lightStackCount].color, sizeof(lightColor));
         updateLights();
     }
 
@@ -1057,6 +1360,7 @@ namespace Core {
 
         setViewport(Core::x, Core::y, Core::width, Core::height);
         viewportDef = viewport;
+        scissor     = viewport;
 
         setCullMode(cmFront);
         setBlendMode(bmAlpha);
@@ -1073,7 +1377,7 @@ namespace Core {
 
     void endFrame() {
         if (active.target != defaultTarget) {
-            GAPI::setTarget(NULL, NULL, 0);
+            setTarget(NULL, NULL, 0);
             validateRenderState();
         }
         GAPI::endFrame();
@@ -1096,33 +1400,6 @@ namespace Core {
 
         stats.dips++;
         stats.tris += range.iCount / 3;
-    }
-
-    PSO* psoCreate(Shader *shader, uint32 renderState, TexFormat colorFormat = FMT_RGBA, TexFormat depthFormat = FMT_DEPTH, const vec4 &clearColor = vec4(0.0f)) {
-        PSO *pso = new PSO();
-        pso->data        = NULL;
-        pso->shader      = shader;
-        pso->renderState = renderState;
-        pso->colorFormat = colorFormat;
-        pso->depthFormat = depthFormat;
-        pso->clearColor  = clearColor;
-        GAPI::initPSO(pso);
-        return pso;
-    }
-
-    void psoDestroy(PSO *pso) {
-        GAPI::deinitPSO(pso);
-        delete pso;
-    }
-
-    void psoBind(PSO *pso) {
-        ASSERT(pso);
-        ASSERT(pso->data);
-        ASSERT(pso->shader);
-        ((Shader*)pso->shader)->setup();
-        GAPI::bindPSO(pso);
-
-        Core::active.pso = pso;
     }
 }
 

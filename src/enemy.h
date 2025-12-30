@@ -2,7 +2,7 @@
 #define H_ENEMY
 
 #include "character.h"
-#include "trigger.h"
+#include "objects.h"
 
 #define STALK_BOX       (1024 * 3)
 #define ESCAPE_BOX      (1024 * 5)
@@ -407,7 +407,7 @@ struct Enemy : Character {
         if (targetBox == TR::NO_BOX)
             gotoBox(target->box);
 
-        if (path && this->box != path->boxes[path->index - 1] && this->box != path->boxes[path->index])
+        if (path && (path->index == 0 || this->box != path->boxes[path->index - 1]) && this->box != path->boxes[path->index])
             targetBoxOld = TR::NO_BOX;
 
         if (zoneOld != zone)
@@ -472,7 +472,14 @@ struct Enemy : Character {
         int z = (b.minZ + b.maxZ) / 2 - int(target->pos.z);
         if (abs(z) > STALK_BOX) return false;
 
-        // TODO: check for some quadrant shit
+        int target_quadrant = angleQuadrant(target->angle.y, 0.0);
+        int box_quadrant = z > 0 ? (x > 0 ? 2 : 1) : (x > 0 ? 3 : 0);
+
+        if (target_quadrant == box_quadrant) return false;
+
+        int controller_quadrant = pos.z > target->pos.z ? (pos.x > target->pos.x ? 2 : 1) : (pos.x > target->pos.x ? 3 : 0);
+
+        if (target_quadrant == controller_quadrant && abs(target_quadrant - box_quadrant) == 2) return false;
 
         return true;
     }
@@ -1050,9 +1057,11 @@ struct Rat : Enemy {
         modelLand  = level->getModelIndex(TR::Entity::ENEMY_RAT_LAND)  - 1;
         modelWater = level->getModelIndex(TR::Entity::ENEMY_RAT_WATER) - 1;
     }
-    
+
     const virtual TR::Model* getModel() {
-        bool water = getRoom().flags.water;
+        bool water = getRoom().flags.water || modelWater == -1;
+        stand = water ? STAND_ONWATER : STAND_GROUND;
+
         int modelIndex = water ? modelWater : modelLand;
 
         if (modelIndex == -1) {
@@ -1065,7 +1074,6 @@ struct Rat : Enemy {
         if (animation.model != model) {
             targetBox = TR::NO_BOX;
             animation.setModel(model);
-            stand = water ? STAND_ONWATER : STAND_GROUND;
 
             int16 rIndex = getRoomIndex();
             if (water) {
@@ -1075,7 +1083,6 @@ struct Rat : Enemy {
                     roomIndex = rIndex;
                 }
             } else {
-                int16 rIndex = getRoomIndex();
                 TR::Room::Sector *sector = level->getSector(rIndex, pos);
                 if (sector) {
                     pos.y = float(sector->floor * 256);
@@ -1229,13 +1236,15 @@ struct Crocodile : Enemy {
         modelLand  = level->getModelIndex(TR::Entity::ENEMY_CROCODILE_LAND)  - 1;
         modelWater = level->getModelIndex(TR::Entity::ENEMY_CROCODILE_WATER) - 1;
 
-        bool water = getRoom().flags.water;
+        bool water = getRoom().flags.water || modelWater == -1;
         flying     = water;
         stand      = water ? STAND_UNDERWATER : STAND_GROUND;
     }
 
     const virtual TR::Model* getModel() {
-        bool water = getRoom().flags.water;
+        bool water = getRoom().flags.water || modelWater == -1;
+        stand  = water ? STAND_UNDERWATER : STAND_GROUND;
+
         int modelIndex = water ? modelWater : modelLand;
 
         if (modelIndex == -1) {
@@ -1248,7 +1257,6 @@ struct Crocodile : Enemy {
         if (animation.model != model) {
             targetBox = TR::NO_BOX;
             animation.setModel(model);
-            stand  = water ? STAND_UNDERWATER : STAND_GROUND;
             flying = water;
 
             int16 rIndex = getRoomIndex();
@@ -1259,7 +1267,6 @@ struct Crocodile : Enemy {
                     roomIndex = rIndex;
                 }
             } else {
-                int16 rIndex = getRoomIndex();
                 TR::Room::Sector *sector = level->getSector(rIndex, pos);
                 if (sector) {
                     pos.y = float(sector->floor * 256);
@@ -1604,6 +1611,9 @@ struct Bat : Enemy {
     virtual void updatePosition() {
         turn(state == STATE_FLY || state == STATE_ATTACK, BAT_TURN_SPEED);
 
+        if (!target)
+            target = (Character*)game->getLara(pos);
+
         if (flying) {
             float wy = waypoint.y - (target->stand != STAND_ONWATER ? 765.0f : 64.0f);
             lift(wy - pos.y, BAT_LIFT_SPEED);
@@ -1903,7 +1913,7 @@ struct Mutant : Enemy {
     }
 
     virtual void setSaveData(const SaveEntity &data) {
-        Character::setSaveData(data);
+        Enemy::setSaveData(data);
         if (flags.invisible)
             deactivate(true);
     }
@@ -2132,7 +2142,7 @@ struct GiantMutant : Enemy {
     }
 
     virtual void setSaveData(const SaveEntity &data) {
-        Character::setSaveData(data);
+        Enemy::setSaveData(data);
         if (flags.invisible)
             deactivate(true);
     }
@@ -2219,7 +2229,7 @@ struct GiantMutant : Enemy {
                 }
                 break;
             case STATE_ATTACK_3 :
-                if (target->stand != STAND_HANG) {
+                if ((mask & HIT_MASK_HAND) && (target->stand != STAND_HANG)) {
                     target->hit(GIANT_MUTANT_DAMAGE_FATAL, this, TR::HIT_GIANT_MUTANT);
                     return STATE_FATAL;
                 }
@@ -2299,7 +2309,7 @@ struct Centaur : Enemy {
     }
 
     virtual void setSaveData(const SaveEntity &data) {
-        Character::setSaveData(data);
+        Enemy::setSaveData(data);
         if (flags.invisible)
             deactivate(true);
     }
@@ -2550,7 +2560,7 @@ struct Human : Enemy {
     int jointGun;
     int animDeath;
 
-    Human(IGame *game, int entity, float health) : Enemy(game, entity, health, 100, 375.0f, 1.0f), animDeath(-1) {
+    Human(IGame *game, int entity, float health) : Enemy(game, entity, health, 100, 0.0f, 1.0f), animDeath(-1) {
         jointGun   = 0;
         jointChest = 7;
         jointHead  = 8;
@@ -3496,8 +3506,10 @@ struct Winston : Enemy {
     virtual void render(Frustum *frustum, MeshBuilder *mesh, Shader::Type type, bool caustics) {
         if (environment && (flags.unused & 4)) {
             game->setRoomParams(getRoomIndex(), Shader::MIRROR, 1.5f, 2.0f, 2.5f, 1.0f, false);
-            environment->bind(sEnvironment);
+            GAPI::Texture *dtex = Core::active.textures[sDiffuse];
+            environment->bind(sDiffuse);
             Controller::render(frustum, mesh, type, caustics);
+            if (dtex) dtex->bind(sDiffuse);
         } else {
             Enemy::render(frustum, mesh, type, caustics);
         }

@@ -13,7 +13,7 @@ R"====(
 #endif
 
 #ifdef OPT_SHADOW
-	#define SHADOW_TEXEL	vec3(1.0 / 1024.0, 1.0 / 1024.0, 0.0)
+	#define SHADOW_TEXEL	vec3(1.0 / SHADOW_SIZE, 1.0 / SHADOW_SIZE, 0.0)
 	uniform mat4 uLightProj;
 
 	#ifdef OPT_VLIGHTPROJ
@@ -95,8 +95,8 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 	}
 
 	vec4 _transform() {
-		#if defined(TYPE_ENTITY) || defined(TYPE_MIRROR)
-			int index = int(aCoord.w * 2.0);
+		#if (defined(TYPE_ENTITY) || defined(TYPE_MIRROR)) && defined(MESH_SKINNING)
+			int index = int(aCoord.w);
 			vec4 rBasisRot = uBasis[index];
 			vec4 rBasisPos = uBasis[index + 1];
 		#else
@@ -111,7 +111,7 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 			mulBasis(rBasisRot, rBasisPos.xyz, aCoord.xyz);
 		#endif
 
-		vViewVec = vec4((uViewPos.xyz - coord) * uFogParams.w, coord.y * uParam.z);
+		vViewVec = vec4((uViewPos.xyz - coord) * uFogParams.w, 0.0);
 
 		#ifndef TYPE_FLASH
 			#ifdef TYPE_SPRITE
@@ -122,18 +122,16 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 
 			float fog;
 			#if defined(UNDERWATER) && !defined(OPT_UNDERWATER_FOG)
-				float d;
-				if (uViewPos.y < uParam.y) // TODO: fix for mediump
-					d = abs((coord.y - uParam.y) / normalize(uViewPos.xyz - coord).y);
-				else
-					d = length(uViewPos.xyz - coord);
+				float d = length(uViewPos.xyz - coord);
+				if (uViewPos.y < uParam.y) {
+					d *= (coord.y - uParam.y) / (coord.y - uViewPos.y);
+				}
 				fog = d * WATER_FOG_DIST;
 				fog *= step(uParam.y, coord.y);
-				vNormal.w = clamp(1.0 / exp(fog), 0.0, 1.0);
 			#else
 				fog = length(vViewVec.xyz);
-    			vNormal.w = clamp(1.0 / exp(fog), 0.0, 1.0);
 			#endif
+			vNormal.w = clamp(1.0 / exp(fog), 0.0, 1.0);
 
 			vCoord = coord;
 		#endif
@@ -150,7 +148,9 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 
 		#ifdef TYPE_FLASH
 			vDiffuse.xyz += uMaterial.w;
-		#else
+		#endif
+
+		#ifdef TYPE_ENTITY
 			vDiffuse *= uMaterial.w;
 		#endif
 
@@ -189,7 +189,7 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 			lum.w = dot(vNormal.xyz, normalize(lv3)); att.w = dot(lv3, lv3);
 			vec4 light = max(vec4(0.0), lum) * max(vec4(0.0), vec4(1.0) - att);
 
-			#if (defined(TYPE_ENTITY) || defined(TYPE_ROOM)) && defined(UNDERWATER)
+			#if (defined(TYPE_ENTITY) || defined(TYPE_ROOM)) && defined(UNDERWATER) && defined(VERT_CAUSTICS)
 				light.x *= 0.5 + abs(sin(dot(coord.xyz, vec3(1.0 / 1024.0)) + uParam.x)) * 0.75;
 			#endif
 
@@ -249,10 +249,10 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 
 #else
 
-	uniform sampler2D sDiffuse;
-
 	#ifdef TYPE_MIRROR
-		uniform samplerCube sEnvironment;
+		uniform samplerCube sDiffuse;
+	#else
+		uniform sampler2D sDiffuse;
 	#endif
 
 	float unpack(vec4 value) {
@@ -262,11 +262,7 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 	#ifdef OPT_SHADOW
 		#ifdef SHADOW_SAMPLER
 			uniform sampler2DShadow sShadow;
-			#ifdef GL_ES
-				#define SHADOW(V) (shadow2DEXT(sShadow, V))
-			#else
-				#define SHADOW(V) (shadow2D(sShadow, V).x)
-			#endif
+			#define SHADOW(p) (FETCH_SHADOW2D(sShadow, p))
 		#else
 			uniform sampler2D sShadow;
 
@@ -354,16 +350,11 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 	}
 
 	void main() {
-		#ifdef CLIP_PLANE
-			if (vViewVec.w > uParam.w)
-				discard;
-		#endif
-
 		vec2 uv = vTexCoord.xy;
 		vec4 color;
 		#ifdef TYPE_MIRROR
 			vec3 rv = reflect(-normalize(vViewVec.xyz), normalize(vNormal.xyz));
-			color = textureCube(sEnvironment, normalize(rv));
+			color = textureCube(sDiffuse, normalize(rv));
 		#else
 			#ifndef TYPE_SPRITE
 				#ifdef OPT_TRAPEZOID

@@ -8,8 +8,12 @@
 //#define TEST_SLOW_FIO
 
 #ifdef _DEBUG
-    #if defined(_OS_LINUX) || defined(_OS_RPI) || defined(_OS_CLOVER)
+    #if defined(_OS_WP8)
+        #define debugBreak() /* TODO */
+    #elif defined(_OS_LINUX) || defined(_OS_RPI) || defined(_OS_CLOVER)
         #define debugBreak() raise(SIGTRAP);
+    #elif defined(_OS_3DS)
+        #define debugBreak() svcBreak(USERBREAK_ASSERT);
     #else
       #if defined(_MSC_VER)
         #define debugBreak() _asm { int 3 }
@@ -18,15 +22,29 @@
       #endif
     #endif
 
-    #define ASSERT(expr) if (expr) {} else { LOG("ASSERT:\n  %s:%d\n  %s => %s\n", __FILE__, __LINE__, __FUNCTION__, #expr); debugBreak(); }
+    #define ASSERT(expr) if (!(expr)) { LOG("ASSERT:\n  %s:%d\n  %s => %s\n", __FILE__, __LINE__, __FUNCTION__, #expr); debugBreak(); }
     #define ASSERTV(expr) ASSERT(expr)
 
     #ifndef _OS_ANDROID
-        #define LOG(...) printf(__VA_ARGS__)
+        #define LOG printf
+    #endif
+
+    #if defined(_OS_XBOX) || defined(_OS_XB1) || defined(_OS_WP8)
+        #define MAX_LOG_LENGTH 1024
+
+        #undef LOG
+        void LOG(const char *format, ...) {
+            char str[MAX_LOG_LENGTH];
+            va_list arglist;
+            va_start(arglist, format);
+            _vsnprintf(str, MAX_LOG_LENGTH, format, arglist);
+            va_end(arglist);
+            OutputDebugStringA(str);
+        }
     #endif
 
 #else
-    //#define ASSERT(expr) if (expr) {} else { LOG("ASSERT:\n  %s:%d\n  %s => %s\n", __FILE__, __LINE__, __FUNCTION__, #expr); }
+
     #define ASSERT(expr)
     #define ASSERTV(expr) (expr) ? 1 : 0
 
@@ -37,7 +55,7 @@
             #define LOG(...) printf(__VA_ARGS__)
         #endif
     #else
-        #define LOG(...) printf(__VA_ARGS__)
+        #define LOG printf
     #endif
 #endif
 
@@ -51,6 +69,7 @@
     #undef LOG
     #define LOG(...) __android_log_print(ANDROID_LOG_INFO,"OpenLara",__VA_ARGS__)
 #endif
+
 
 #ifdef _OS_PSP
     extern "C" {
@@ -76,7 +95,7 @@
 #define DECL_STR(v)  #v,
 
 #define EPS     FLT_EPSILON
-#define INF     INFINITY
+#define INF     FLT_MAX
 #define PI      3.14159265358979323846f
 #define PIH     (PI * 0.5f)
 #define PI2     (PI * 2.0f)
@@ -88,7 +107,7 @@
 #define COS60   0.50000000000f
 
 #define SQR(x)  ((x)*(x))
-#define randf() ((float)rand()/RAND_MAX)
+#define randf() (float(rand())/float(RAND_MAX))
 
 typedef signed char        int8;
 typedef signed short       int16;
@@ -99,9 +118,10 @@ typedef unsigned short     uint16;
 typedef unsigned int       uint32;
 typedef unsigned long long uint64;
 
-#define FOURCC(str)        uint32(((uint8*)(str))[0] | (((uint8*)(str))[1] << 8) | (((uint8*)(str))[2] << 16) | (((uint8*)(str))[3] << 24) )
+#define FOURCC(str)        uint32( ((uint8*)(str))[0] | (((uint8*)(str))[1] << 8) | (((uint8*)(str))[2] << 16) | (((uint8*)(str))[3] << 24) )
+#define TWOCC(str)         uint32( ((uint8*)(str))[0] | (((uint8*)(str))[1] << 8) )
 
-#define ALIGN(x, a)        (((x) + ((a) - 1)) & ~((a) - 1))
+#define ALIGNADDR(x, a)    (((x) + ((a) - 1)) & ~((a) - 1))
 #define COUNT(arr)         int(sizeof(arr) / sizeof(arr[0]))
 #define OFFSETOF(T, E)     ((size_t)&(((T*)0)->E))
 #define TEST_BIT(arr, bit) ((arr[bit / 32] >> (bit % 32)) & 1)
@@ -132,8 +152,8 @@ inline const T& clamp(const T &x, const T &a, const T &b) {
 }
 
 template <class T>
-inline const int sign(const T &x) {
-    return x > 0 ? 1 : (x < 0 ? -1 : 0);
+inline const T sign(const T &x) {
+    return (T)(x > 0 ? 1 : (x < 0 ? -1 : 0));
 }
 
 template <class T>
@@ -166,8 +186,8 @@ float normalizeAngle(float angle) {
     return angle;
 }
 
-int angleQuadrant(float angle) {
-    return int(normalizeAngle(angle + PI * 0.25f) / (PI * 0.5f));
+int angleQuadrant(float angle, float offset) {
+    return int(normalizeAngle(angle + PI * offset) / (PI * 0.5f));
 }
 
 float decrease(float delta, float &value, float &speed) {
@@ -197,7 +217,7 @@ inline float lerp(float a, float b, float t) {
 float lerpAngle(float a, float b, float t) {
     if (t <= 0.0f) return a;
     if (t >= 1.0f) return b;
-    return a + shortAngle(a, b) * t; 
+    return a + shortAngle(a, b) * t;
 }
 
 int nextPow2(uint32 x) {
@@ -306,9 +326,9 @@ namespace Noise { // based on https://github.com/Auburns/FastNoise
         float fy = quintic(dy0);
         float fz = quintic(dz0);
 
-        return lerp(lerp(lerp(noise(x0, y0, z0, dx0, dy0, dz0), noise(x1, y0, z0, dx1, dy0, dz0), fx), 
+        return lerp(lerp(lerp(noise(x0, y0, z0, dx0, dy0, dz0), noise(x1, y0, z0, dx1, dy0, dz0), fx),
                          lerp(noise(x0, y1, z0, dx0, dy1, dz0), noise(x1, y1, z0, dx1, dy1, dz0), fx), fy),
-                    lerp(lerp(noise(x0, y0, z1, dx0, dy0, dz1), noise(x1, y0, z1, dx1, dy0, dz1), fx), 
+                    lerp(lerp(noise(x0, y0, z1, dx0, dy0, dz1), noise(x1, y0, z1, dx1, dy0, dz1), fx),
                          lerp(noise(x0, y1, z1, dx0, dy1, dz1), noise(x1, y1, z1, dx1, dy1, dz1), fx), fy), fz);
     }
 
@@ -397,7 +417,7 @@ struct vec2 {
     vec2 lerp(const vec2 &v, const float t) const {
         if (t <= 0.0f) return *this;
         if (t >= 1.0f) return v;
-        return *this + (v - *this) * t; 
+        return *this + (v - *this) * t;
     }
 };
 
@@ -457,7 +477,7 @@ struct vec3 {
     vec3 lerp(const vec3 &v, const float t) const {
         if (t <= 0.0f) return *this;
         if (t >= 1.0f) return v;
-        return *this + (v - *this) * t; 
+        return *this + (v - *this) * t;
     }
 
     vec3 rotateY(float angle) const {
@@ -477,6 +497,7 @@ struct vec3 {
 struct vec4 {
     float x, y, z, w;
 
+    vec2& xy()  const { return *((vec2*)&x); }
     vec3& xyz() const { return *((vec3*)&x); }
 
     vec4() {}
@@ -486,6 +507,8 @@ struct vec4 {
     vec4(const vec3 &xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
     vec4(const vec2 &xy, const vec2 &zw) : x(xy.x), y(xy.y), z(zw.x), w(zw.y) {}
 
+    inline float& operator [] (int index) const { ASSERT(index >= 0 && index <= 3); return ((float*)this)[index]; }
+
     inline bool operator == (const vec4 &v) const { return x == v.x && y == v.y && z == v.z && w == v.w; }
     inline bool operator != (const vec4 &v) const { return !(*this == v); }
 
@@ -494,10 +517,12 @@ struct vec4 {
     vec4 operator * (const vec4 &v) const { return vec4(x*v.x, y*v.y, z*v.z, w*v.w); }
     vec4& operator *= (const vec4 &v) { x*=v.x; y*=v.y; z*=v.z; w*=v.w; return *this; }
 
+    float dot(const vec4 &v) const { return x * v.x + y * v.y + z * v.z + w * v.w; }
+
     vec4 lerp(const vec4 &v, const float t) const {
         if (t <= 0.0f) return *this;
         if (t >= 1.0f) return v;
-        return *this + (v - *this) * t; 
+        return *this + (v - *this) * t;
     }
 };
 
@@ -518,20 +543,23 @@ struct quat {
         w = c;
     }
 
+    inline bool operator == (const quat &q) const { return x == q.x && y == q.y && z == q.z && w == q.w; }
+    inline bool operator != (const quat &v) const { return !(*this == v); }
+
     quat operator - () const {
         return quat(-x, -y, -z, -w);
     }
 
-    quat operator + (const quat &q) const { 
-        return quat(x + q.x, y + q.y, z + q.z, w + q.w); 
+    quat operator + (const quat &q) const {
+        return quat(x + q.x, y + q.y, z + q.z, w + q.w);
     }
 
-    quat operator - (const quat &q) const { 
-        return quat(x - q.x, y - q.y, z - q.z, w - q.w); 
+    quat operator - (const quat &q) const {
+        return quat(x - q.x, y - q.y, z - q.z, w - q.w);
     }
 
-    quat operator * (const float s) const { 
-        return quat(x * s, y * s, z * s, w * s); 
+    quat operator * (const float s) const {
+        return quat(x * s, y * s, z * s, w * s);
     }
 
     quat operator * (const quat &q) const {
@@ -542,19 +570,18 @@ struct quat {
     }
 
     vec3 operator * (const vec3 &v) const {
-        //return v + xyz.cross(xyz.cross(v) + v * w) * 2.0f;
-        return (*this * quat(v.x, v.y, v.z, 0) * inverse()).xyz();
+        return v + xyz().cross(xyz().cross(v) + v * w) * 2.0f;
     }
 
     float dot(const quat &q) const {
         return x * q.x + y * q.y + z * q.z + w * q.w;
     }
 
-    float length2() const { 
-        return dot(*this); 
+    float length2() const {
+        return dot(*this);
     }
 
-    float length() const { 
+    float length() const {
         return sqrtf(length2());
     }
 
@@ -578,7 +605,7 @@ struct quat {
         if (t <= 0.0f) return *this;
         if (t >= 1.0f) return q;
 
-        return dot(q) < 0 ? (*this - (q + *this) * t) : 
+        return dot(q) < 0 ? (*this - (q + *this) * t) :
                             (*this + (q - *this) * t);
     }
 
@@ -614,6 +641,7 @@ struct mat4 {
 
     enum ProjRange {
         PROJ_NEG_POS,
+        PROJ_NEG_ZERO,
         PROJ_ZERO_POS,
     };
 
@@ -632,7 +660,7 @@ struct mat4 {
     mat4(float e00, float e10, float e20, float e30,
          float e01, float e11, float e21, float e31,
          float e02, float e12, float e22, float e32,
-         float e03, float e13, float e23, float e33) : 
+         float e03, float e13, float e23, float e33) :
          e00(e00), e10(e10), e20(e20), e30(e30),
          e01(e01), e11(e11), e21(e21), e31(e31),
          e02(e02), e12(e12), e22(e22), e32(e32),
@@ -645,45 +673,103 @@ struct mat4 {
         e33 = 1.0f;
     }
 
-    mat4(ProjRange range, float l, float r, float b, float t, float znear, float zfar) {
+    void ortho(ProjRange range, float l, float r, float b, float t, float znear, float zfar, bool rotate90 = false) {
         identity();
-        e00 = 2.0f / (r - l);
-        e11 = 2.0f / (t - b);
-        e22 = 2.0f / (znear - zfar);
+
+        if (rotate90) {
+            e00 = e11 = 0.0f;
+            e10 = 2.0f / (l - r);
+            e01 = 2.0f / (t - b);
+        } else {
+            e00 = 2.0f / (r - l);
+            e11 = 2.0f / (t - b);
+        }
+
         e03 = (l + r) / (l - r);
         e13 = (t + b) / (b - t);
+
         switch (range) {
             case PROJ_NEG_POS :
-                e23 = (zfar + znear) / (znear - zfar);
+                e22 = 2.0f / (znear - zfar);
+                e23 = (znear + zfar) / (znear - zfar);
+                break;
+            case PROJ_NEG_ZERO :
+                e22 = 1.0f / (znear - zfar);
+                e23 = (znear + zfar) / (znear - zfar) * 0.5f - 0.5f;
+                e03 = -e03;
                 break;
             case PROJ_ZERO_POS :
+                e22 = 2.0f / (znear - zfar);
                 e23 = znear / (znear - zfar);
                 break;
         }
     }
 
-    mat4(ProjRange range, float fov, float aspect, float znear, float zfar) {
-        float k = 1.0f / tanf(fov * 0.5f * DEG2RAD);
+    void frustum(ProjRange range, float l, float r, float b, float t, float znear, float zfar, bool rotate90 = false) {
         identity();
-        if (aspect >= 1.0f) {
-            e00 = k / aspect;
-            e11 = k;
+
+        if (rotate90) {
+            e00 = e11 = 0.0f;
+            e01 = 2.0f * znear / (r - l);
+            e10 = 2.0f * znear / (b - t);
         } else {
-            e00 = k;
-            e11 = k * aspect;
+            e00 = 2.0f * znear / (r - l);
+            e11 = 2.0f * znear / (t - b);
         }
-        e33 = 0.0f;
+
+        e02 = (r + l) / (r - l);
+        e12 = (t + b) / (t - b);
         e32 = -1.0f;
+        e33 = 0.0f;
+
         switch (range) {
             case PROJ_NEG_POS :
                 e22 = (znear + zfar) / (znear - zfar);
                 e23 = 2.0f * zfar * znear / (znear - zfar);
+                break;
+            case PROJ_NEG_ZERO :
+                e22 = znear / (znear - zfar);
+                e23 = zfar * znear / (znear - zfar);
                 break;
             case PROJ_ZERO_POS :
                 e22 = zfar / (znear - zfar);
                 e23 = znear * e22;
                 break;
         }
+    }
+
+    void perspective(ProjRange range, float fov, float aspect, float znear, float zfar, float eye = 0.0f, bool rotate90 = false) {
+        float y = tanf(fov * 0.5f * DEG2RAD) * znear;
+        float x = y;
+        float eyeX, eyeY;
+
+        if (rotate90) {
+            eyeX = 0.0f;
+            eyeY = -eye;
+            aspect = 1.0f / aspect;
+            swap(x, y);
+        } else {
+            eyeX = eye;
+            eyeY = 0.0f;
+        }
+
+        if (aspect >= 1.0f) {
+            x = y * aspect;
+        } else {
+            y /= aspect;
+        }
+
+        frustum(range, -x - eyeX, x - eyeX, -y - eyeY, y - eyeY, znear, zfar, rotate90);
+    }
+
+    void viewport(float x, float y, float width, float height, float n, float f) {
+        identity();
+        e00 = width   * 0.5f;
+        e11 = height  * 0.5f;
+        e22 = (f - n) * 0.5f;
+        e23 = (f + n) * 0.5f;
+        e03 = x + e00;
+        e13 = y + e11;
     }
 
     mat4(const vec3 &from, const vec3 &at, const vec3 &up) {
@@ -699,9 +785,9 @@ struct mat4 {
     }
 
     mat4(const vec4 &reflectPlane) {
-        float a = reflectPlane.x, 
-              b = reflectPlane.y, 
-              c = reflectPlane.z, 
+        float a = reflectPlane.x,
+              b = reflectPlane.y,
+              c = reflectPlane.z,
               d = reflectPlane.w;
 
         right()  = vec4(1 - 2*a*a,   - 2*b*a,   - 2*c*a, 0);
@@ -743,7 +829,7 @@ struct mat4 {
             e10 * v.x + e11 * v.y + e12 * v.z + e13,
             e20 * v.x + e21 * v.y + e22 * v.z + e23);
     }
-    
+
     vec4 operator * (const vec4 &v) const {
         return vec4(
             e00 * v.x + e01 * v.y + e02 * v.z + e03 * v.w,
@@ -981,6 +1067,32 @@ struct mat4 {
     void setPos(const vec3 &pos) {
         offset().xyz() = pos;
     }
+
+    void rot90()
+    {
+        swap(e00, e10);
+        swap(e01, e11);
+        swap(e02, e12);
+        swap(e03, e13);
+
+        e10 = -e10;
+        e11 = -e11;
+        e12 = -e12;
+        e13 = -e13;
+    }
+
+    void unrot90()
+    {
+        e10 = -e10;
+        e11 = -e11;
+        e12 = -e12;
+        e13 = -e13;
+
+        swap(e00, e10);
+        swap(e01, e11);
+        swap(e02, e12);
+        swap(e03, e13);
+    }
 };
 
 struct Basis {
@@ -998,15 +1110,15 @@ struct Basis {
         w   = 1.0f;
     }
 
-	Basis operator * (const Basis &basis) const {
+    Basis operator * (const Basis &basis) const {
         return Basis(rot * basis.rot, pos + rot * basis.pos);
     }
 
-	vec3 operator * (const vec3 &v) const {
+    vec3 operator * (const vec3 &v) const {
         return rot * v + pos;
     }
 
-	Basis inverse() const {
+    Basis inverse() const {
         quat q = rot.conjugate();
         return Basis(q, -(q * pos));
     }
@@ -1046,6 +1158,8 @@ struct short2 {
 
     short2() {}
     short2(int16 x, int16 y) : x(x), y(y) {}
+
+    inline bool operator == (const short2 &v) const { return x == v.x && y == v.y; }
 };
 
 struct short3 {
@@ -1058,6 +1172,7 @@ struct short3 {
 
     short3 operator + (const short3 &v) const { return short3(x + v.x, y + v.y, z + v.z); }
     short3 operator - (const short3 &v) const { return short3(x - v.x, y - v.y, z - v.z); }
+    inline bool operator == (const short3 &v) const { return x == v.x && y == v.y && z == v.z; }
 };
 
 struct short4 {
@@ -1066,7 +1181,11 @@ struct short4 {
     short4() {}
     short4(int16 x, int16 y, int16 z, int16 w) : x(x), y(y), z(z), w(w) {}
 
+    operator vec2()   const { return vec2((float)x, (float)y); };
     operator vec3()   const { return vec3((float)x, (float)y, (float)z); };
+    operator vec4()   const { return vec4((float)x, (float)y, (float)z, (float)w); };
+
+    operator short2() const { return *((short2*)this); }
     operator short3() const { return *((short3*)this); }
 
     inline bool operator == (const short4 &v) const { return x == v.x && y == v.y && z == v.z && w == v.w; }
@@ -1138,7 +1257,7 @@ struct Box {
     Box() {}
     Box(const vec3 &min, const vec3 &max) : min(min), max(max) {}
 
-    vec3 operator [] (int index) const {        
+    vec3 operator [] (int index) const {
         ASSERT(index >= 0 && index <= 7);
         switch (index) {
             case 0 : return min;
@@ -1171,7 +1290,7 @@ struct Box {
         max.x = ::max(max.x, box.max.x);
         max.y = ::max(max.y, box.max.y);
         max.z = ::max(max.z, box.max.z);
-        return *this; 
+        return *this;
     }
 
     Box& operator += (const vec3 &v) {
@@ -1181,7 +1300,7 @@ struct Box {
         max.x = ::max(max.x, v.x);
         max.y = ::max(max.y, v.y);
         max.z = ::max(max.z, v.z);
-        return *this; 
+        return *this;
     }
 
     Box& operator -= (const Box &box) {
@@ -1191,13 +1310,13 @@ struct Box {
         max.x = ::min(max.x, box.max.x);
         max.y = ::min(max.y, box.max.y);
         max.z = ::min(max.z, box.max.z);
-        return *this; 
+        return *this;
     }
 
     Box operator * (const mat4 &m) const {
         Box res(vec3(+INF), vec3(-INF));
         for (int i = 0; i < 8; i++) {
-            vec4 v = m * vec4((*this)[i], 1.0f);            
+            vec4 v = m * vec4((*this)[i], 1.0f);
             res += v.xyz() /= v.w;
         }
         return res;
@@ -1293,7 +1412,7 @@ struct Box {
     bool intersect(const vec3 &rayPos, const vec3 &rayDir, float &t) const {
         float tMax = INF, tMin = -tMax;
 
-        for (int i = 0; i < 3; i++) 
+        for (int i = 0; i < 3; i++)
             if (rayDir[i] != 0) {
                 float lo = (min[i] - rayPos[i]) / rayDir[i];
                 float hi = (max[i] - rayPos[i]) / rayDir[i];
@@ -1317,6 +1436,7 @@ union Color32 { // RGBA8888
     struct { uint8 r, g, b, a; };
 
     Color32() {}
+    Color32(uint32 value) : value(value) {}
     Color32(uint8 r, uint8 g, uint8 b, uint8 a) : r(r), g(g), b(b), a(a) {}
 
     void SetRGB15(uint16 v) {
@@ -1375,15 +1495,185 @@ struct Color24 { // RGB888
 };
 
 union Color16 { // RGBA5551
-    struct { uint16 r:5, g:5, b:5, a:1; };
+    struct { uint16 b:5, g:5, r:5, a:1; };
     uint16 value;
 
     Color16() {}
     Color16(uint16 value) : value(value) {}
 
-    Color32  getBGR()  const { return Color32((b << 3) | (b >> 2), (g << 3) | (g >> 2), (r << 3) | (r >> 2), 255); }
     operator Color24() const { return Color24((r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2)); }
     operator Color32() const { return Color32((r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2), -a); }
+};
+
+union ColorCLUT { // RGBA5551
+    struct { uint16 r:5, g:5, b:5, a:1; };
+    uint16 value;
+
+    ColorCLUT() {}
+    ColorCLUT(uint16 value) : value(value) {}
+
+    operator Color24() const { return Color24((r << 3) | (r >> 2), (g << 3), (b << 3)); }
+    operator Color32() const { return Color32((r << 3) | (r >> 2), (g << 3), (b << 3), -a); }
+};
+
+struct ColorIndex4 {
+    uint8 a:4, b:4;
+};
+
+struct Tile4 {
+    ColorIndex4 index[256 * 256 / 2];
+};
+
+struct Tile8 {
+    uint8 index[256 * 256];
+};
+
+struct Tile16 {
+    Color16 color[256 * 256];
+};
+
+#ifdef USE_ATLAS_RGBA16
+union AtlasColor {
+    struct { uint16 a:1, b:5, g:5, r:5; };
+    uint16 value;
+
+    AtlasColor() {}
+    AtlasColor(uint16 value) : value(value) {}
+    AtlasColor(const Color16 &value) : a(value.a), b(value.b), g(value.g), r(value.r) {}
+    AtlasColor(const Color24 &value) : a(1), b(value.b >> 3), g(value.g >> 3), r(value.r >> 3) {}
+    AtlasColor(const Color32 &value) : a(value.a ? 1 : 0), b(value.b >> 3), g(value.g >> 3), r(value.r >> 3) {}
+    AtlasColor(const ColorCLUT &value) : a(value.a), b(value.b), g(value.g), r(value.r) {}
+};
+
+#define ATLAS_FORMAT FMT_RGBA16
+#else
+typedef Color32 AtlasColor;
+#define ATLAS_FORMAT FMT_RGBA
+#endif
+
+struct AtlasTile {
+    AtlasColor color[256 * 256];
+};
+
+struct Tile32 {
+    Color32 color[256 * 256];
+};
+
+struct CLUT {
+    ColorCLUT color[16];
+};
+
+namespace StrUtils {
+
+    void toLower(char *str) {
+        if (!str) return;
+
+        while (char &c = *str++) {
+            if (c >= 'A' && c <= 'Z')
+                c -= 'Z' - 'z';
+        }
+    }
+
+    char* copy(const char *str) {
+        if (str == NULL) {
+            return NULL;
+        }
+        char *res = new char[strlen(str) + 1];
+        strcpy(res, str);
+        return res;
+    }
+
+    int32 length(uint16 *str) {
+        if (!str || !str[0]) return 0;
+        int32 len = 0;
+        while (*str++) {
+            len++;
+        }
+        return len;
+    }
+}
+
+
+template <typename T>
+struct Array {
+    int capacity;
+    int length;
+    T   *items;
+
+    Array(int capacity = 32) : capacity(capacity), length(0), items(NULL) {}
+
+    ~Array() {
+        clear();
+    }
+
+    void reserve(int capacity) {
+        this->capacity = capacity;
+        if (items)
+            items = (T*)realloc(items, capacity * sizeof(T));
+        else
+            items = (T*)malloc(capacity * sizeof(T));
+    }
+
+    int push(const T &item) {
+        if (!items)
+            items = (T*)malloc(capacity * sizeof(T));
+
+        if (length == capacity)
+            reserve(capacity + capacity / 2);
+
+        items[length] = item;
+        return length++;
+    }
+
+    int pop() {
+        ASSERT(length > 0);
+        return --length;
+    }
+
+    void removeFast(int index) {
+        (*this)[index] = (*this)[length - 1];
+        length--;
+    }
+
+    void remove(int index) {
+        length--;
+        ASSERT(length >= 0);
+        for (int i = index; i < length; i++)
+            items[i] = items[i + 1];
+    }
+
+    void resize(int length) {
+        if (capacity < length)
+            reserve(length);
+        this->length = length;
+    }
+
+    void reset() {
+        length = 0;
+    }
+
+    void clear() {
+        reset();
+        free(items);
+        items = NULL;
+    }
+
+    int find(const T &item) {
+        for (int i = 0; i < length; i++) {
+            if (items[i] == item)
+                return i;
+        }
+        return -1;
+    }
+
+    void sort() {
+        ::sort(items, length);
+    }
+
+    T& operator[] (int index) {
+        ASSERT(index >= 0 && index < length);
+        return items[index];
+    };
 };
 
 
@@ -1395,6 +1685,10 @@ extern void osCacheRead  (Stream *stream);
 extern void osReadSlot   (Stream *stream);
 extern void osWriteSlot  (Stream *stream);
 
+#ifdef _OS_LINUX
+extern const char* osFixFileName(const char* fileName);
+#endif
+
 #ifdef _OS_WEB
 extern void osDownload   (Stream *stream);
 #endif
@@ -1404,6 +1698,8 @@ char saveDir[255];
 char contentDir[255];
 
 #define STREAM_BUFFER_SIZE (16 * 1024)
+
+#define MAX_PACKS 32
 
 struct Stream {
     typedef void (Callback)(Stream *stream, void *userData);
@@ -1417,40 +1713,178 @@ struct Stream {
 
     char        *buffer;
     int         bufferIndex;
+    bool        buffering;
+    uint32      baseOffset;
 
-    Stream(const char *name, const void *data, int size, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data((char*)data), name(NULL), size(size), pos(0), buffer(NULL) {
-        if (name) {
-            this->name = new char[strlen(name) + 1];
-            strcpy(this->name, name);
+    struct Pack
+    {
+        Stream* stream;
+        uint8*  table;
+        uint32  count;
+
+        struct FileInfo
+        {
+            uint32 size;
+            uint32 offset;
+        };
+
+        bool findFile(const char* name, FileInfo &info)
+        {
+            if (!table || !name || !name[0]) {
+                return false;
+            }
+
+            uint16 len = (uint16)strlen(name);
+            uint8* ptr = table;
+
+            for (uint32 i = 0; i < count; i++)
+            {
+                uint32 magic;
+                memcpy(&magic, ptr, sizeof(magic));
+                if (magic != 0x02014B50) {
+                    ASSERT(false);
+                    return false;
+                }
+
+                uint16 nameLen, extraLen, infoLen;
+                memcpy(&nameLen, ptr + 28, sizeof(nameLen));
+                memcpy(&extraLen, ptr + 30, sizeof(extraLen));
+
+                if ((nameLen == len) && (memcmp(ptr + 46, name, len) == 0))
+                {
+                    uint16 compression;
+                    memcpy(&compression, ptr + 10, sizeof(compression));
+
+                    if (compression != 0)
+                    {
+                        ASSERT(false);
+                        return false;
+                    }
+
+                    memcpy(&info.size,   ptr + 24, sizeof(info.size));
+                    memcpy(&info.offset, ptr + 42, sizeof(info.offset));
+
+                    stream->setPos(info.offset);
+                    magic = stream->readLE32();
+
+                    if (magic != 0x04034B50) {
+                        ASSERT(false);
+                        return false;
+                    }
+                    stream->seek(22);
+                    nameLen = stream->readLE16();
+                    extraLen = stream->readLE16();
+
+                    info.offset += 4 + 22 + 2 + 2 + nameLen + extraLen;
+
+                    return true;
+                }
+
+                memcpy(&infoLen,  ptr + 32, sizeof(infoLen));
+
+                ptr += 46 + nameLen + extraLen + infoLen;
+            }
+
+            return false;
         }
+
+        Pack(const char *name) : stream(NULL), table(NULL), count(0)
+        {
+            stream = new Stream(name);
+            stream->buffering = false;
+            stream->setPos(stream->size - 22);
+            uint32 magic = stream->readLE32();
+
+            if (magic != 0x06054B50)
+            {
+                ASSERT(false);
+                return;
+            }
+
+            stream->seek(6);
+            count = stream->readLE16();
+            uint32 tableSize = stream->readLE32();
+            uint32 tableOffset = stream->readLE32();
+
+            stream->setPos(tableOffset);
+
+            table = new uint8[tableSize];
+            stream->raw(table, tableSize);
+        }
+
+        ~Pack() {
+            delete stream;
+            delete[] table;
+        }
+    };
+
+    static Pack* packs[MAX_PACKS];
+
+    static Array<char*> fileList;
+
+    static bool addPack(const char *name)
+    {
+        if (!existsContent(name)) {
+            return false;
+        }
+
+        for (int i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i])
+            {
+                packs[i] = new Pack(name);
+                return true;
+            }
+        }
+        return false;
     }
 
-    Stream(const char *name, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data(NULL), name(NULL), size(-1), pos(0), buffer(NULL) {
-        if (!name && callback) {
-            callback(NULL, userData);
-            delete this;
-            return;
+    static void init() {
+        readFileList();
+    }
+
+    static void deinit()
+    {
+        for (int i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i]) break;
+            delete packs[i];
         }
 
-        if (!name) {
-            ASSERT(false);
+        for (int i = 0; i < fileList.length; i++) {
+            delete[] fileList[i];
         }
+        fileList.clear();
+    }
 
+private:
+#ifdef _OS_3DS
+    static void streamThread(void *arg) {
+        Stream* stream = (Stream*)arg;
+        stream->openFile();
+    }
+#endif
+
+    void openFile() {
+        char path[255];
+
+        path[0] = 0;
         if (contentDir[0] && (!cacheDir[0] || !strstr(name, cacheDir))) {
-            char path[255];
-            path[0] = 0;
-            strcat(path, contentDir);
-            strcat(path, name);
-            f = fopen(path, "rb");
-        } else
-            f = fopen(name, "rb");
+            strcpy(path, contentDir);
+        }
+
+    #ifdef _OS_LINUX
+        strcat(path, osFixFileName(name));
+    #else
+        strcat(path, name);
+    #endif
+
+        fixBackslash(path);
+
+        f = fopen(path, "rb");
 
         if (!f) {
             #ifdef _OS_WEB
-                if (name) {
-                    this->name = new char[strlen(name) + 1];
-                    strcpy(this->name, name);
-                }
                 osDownload(this);
             #else
                 LOG("error loading file \"%s\"\n", name);
@@ -1465,18 +1899,78 @@ struct Stream {
             fseek(f, 0, SEEK_END);
             size = (int32)ftell(f);
             fseek(f, 0, SEEK_SET);
-            fpos = 0;
 
+            fpos = 0;
             bufferIndex = -1;
 
-            if (name) {
-                this->name = new char[strlen(name) + 1];
-                strcpy(this->name, name);
-            }
-
-            if (callback)
-                callback(this, userData);
+            if (callback) callback(this, userData);
         }
+    }
+public:
+
+    Stream(const char *name, const void *data, int size, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data((char*)data), name(NULL), size(size), pos(0), buffer(NULL) {
+        this->name = StrUtils::copy(name);
+    }
+
+    Stream(const char *name, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data(NULL), name(NULL), size(-1), pos(0), buffer(NULL), buffering(true), baseOffset(0) {
+        if (!name && callback) {
+            callback(NULL, userData);
+            delete this;
+            return;
+        }
+
+        if (!name) {
+            ASSERT(false);
+        }
+
+        Stream::Pack::FileInfo info;
+
+        char path[256];
+
+        for (int i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i]) break;
+
+            if (packs[i]->findFile(name, info))
+            {
+                path[0] = 0;
+                if (contentDir[0] && (!cacheDir[0] || !strstr(name, cacheDir))) {
+                    strcpy(path, contentDir);
+                }
+                strcat(path, packs[i]->stream->name);
+                fixBackslash(path);
+
+                f = fopen(path, "rb");
+                if (!f) {
+                    LOG("error loading file from pack \"%s -> %s\"\n", packs[i]->stream->name, name);
+                    ASSERT(false);
+                    return;
+                }
+                baseOffset = info.offset;
+                fseek(f, info.offset, SEEK_SET);
+                size = info.size;
+
+                fpos = 0;
+                bufferIndex = -1;
+
+                this->name = StrUtils::copy(name);
+                if (callback) callback(this, userData);
+                return;
+            }
+        }
+
+        this->name = StrUtils::copy(name);
+
+    #ifdef _OS_3DS /* TODO
+        if (callback) {
+            s32 priority = 0;
+            svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
+            threadCreate(streamThread, this, 64 * 1024, priority - 1, -2, false);
+            return;
+        }*/
+    #endif
+
+        openFile();
     }
 
     ~Stream() {
@@ -1484,6 +1978,123 @@ struct Stream {
         delete[] buffer;
         if (f) fclose(f);
     }
+
+#if _OS_3DS
+    static void readDirectory(const FS_Archive &archive, const char* path) {
+        char buf[255];
+        strcpy(buf, contentDir + 5); // 5 to skip "sdmc:"
+        strcat(buf, path);
+
+        FS_Path fsPath = fsMakePath(FS_PathType::PATH_ASCII, buf);
+
+        Handle dir;
+        if (FSUSER_OpenDirectory(&dir, archive, fsPath) != 0) {
+            return;
+        }
+
+        int32 pathLen = strlen(path);
+        strcpy(buf, path);
+
+        while (1) {
+            FS_DirectoryEntry entry;
+
+            u32 entriesRead = 0;
+            FSDIR_Read(dir, &entriesRead, 1, &entry);
+
+            if (entriesRead == 0) {
+                break;
+            }
+
+            int32 len = utf16_to_utf8((uint8*)buf + pathLen, entry.name, StrUtils::length(entry.name));
+            buf[pathLen + len] = 0;
+
+            if (entry.attributes & FS_ATTRIBUTE_DIRECTORY) {
+                strcat(buf, "/");
+                readDirectory(archive, buf);
+            } else {
+                fileList.push(StrUtils::copy(buf));
+            }
+        }
+
+        FSDIR_Close(dir);
+    }
+
+    static void readFileList() {
+        FS_Archive sdmc;
+        FS_Path fsRoot = fsMakePath(FS_PathType::PATH_ASCII, "");
+
+        if (FSUSER_OpenArchive(&sdmc, FS_ArchiveID::ARCHIVE_SDMC, fsRoot) != 0) {
+            return;
+        }
+
+        readDirectory(sdmc, "");
+
+        FSUSER_CloseArchive(sdmc);
+    }
+#elif _OS_PSV
+    static void readDirectory(char* path) {
+        SceUID dd = sceIoDopen(path);
+
+        size_t len = strlen(path);
+
+        SceIoDirent entry;
+        while (sceIoDread(dd, &entry) > 0)
+        {
+            strcat(path, entry.d_name);
+
+            if (SCE_S_ISDIR(entry.d_stat.st_mode))
+            {
+                strcat(path, "/");
+                readDirectory(path);
+            } else {
+                fileList.push(StrUtils::copy(path + strlen(contentDir)));
+            }
+
+            path[len] = 0;
+        }
+
+        sceIoClose(dd);
+    }
+
+    static void readFileList() {
+        char path[255];
+        strcpy(path, contentDir);
+        readDirectory(path);
+    }
+#elif _OS_PSP  //vita isnt called "psp2" by coincidence
+//dunno if this is used (?)
+    static void readDirectory(char* path) {
+        SceUID dd = sceIoDopen(path);
+
+        size_t len = strlen(path);
+
+        SceIoDirent entry;
+        while (sceIoDread(dd, &entry) > 0)
+        {
+            strcat(path, entry.d_name);
+
+            if (FIO_S_ISDIR(entry.d_stat.st_mode))
+            {
+                strcat(path, "/");
+                readDirectory(path);
+            } else {
+                fileList.push(StrUtils::copy(path + strlen(contentDir)));
+            }
+
+            path[len] = 0;
+        }
+
+        sceIoClose(dd);
+    }
+
+    static void readFileList() {
+        char path[255];
+        strcpy(path, contentDir);
+        readDirectory(path);
+    }
+#else
+    static void readFileList() {};
+#endif
 
     static void cacheRead(const char *name, Callback *callback = NULL, void *userData = NULL) {
         Stream *stream = new Stream(name, NULL, 0, callback, userData);
@@ -1507,17 +2118,52 @@ struct Stream {
         osCacheWrite(stream);
     }
 
+    static void fixBackslash(char *str) {
+    #ifdef _OS_XBOX
+        int len = strlen(str);
+        for (int i = 0; i < len; i++) {
+            if (str[i] == '/') {
+                str[i] = '\\';
+            }
+        }
+    #endif
+    }
+
     static bool exists(const char *name) {
+    #if defined (_OS_LINUX) && !defined(__LIBRETRO__)
+       name = osFixFileName(name);
+       return (name != NULL);
+    #else
         FILE *f = fopen(name, "rb");
         if (!f) return false;
         fclose(f);
         return true;
+    #endif
     }
 
     static bool existsContent(const char *name) {
+        for (uint32 i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i]) break;
+
+            Pack::FileInfo info;
+            if (packs[i]->findFile(name, info))
+                return true;
+        }
+
+        if (fileList.length) {
+            for (int i = 0; i < fileList.length; i++) {
+                if (strcmp(fileList[i], name) == 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         char fileName[1024];
         strcpy(fileName, contentDir);
         strcat(fileName, name);
+        fixBackslash(fileName);
         return exists(fileName);
     }
 
@@ -1533,6 +2179,18 @@ struct Stream {
         if (!count) return;
 
         if (f) {
+
+            if (!buffering) {
+                if (fpos != pos) {
+                    fseek(f, baseOffset + pos, SEEK_SET);
+                    fpos = pos;
+                }
+                fread(data, 1, count, f);
+                pos += count;
+                fpos += count;
+                return;
+            }
+
             uint8 *ptr = (uint8*)data;
 
             while (count > 0) {
@@ -1541,16 +2199,16 @@ struct Stream {
                 if (bufferIndex != bIndex) {
                     bufferIndex = bIndex;
 
-                    size_t readed;
+                    int readed;
                     int part;
 
                     if (fpos == pos) {
                         part = min(count / STREAM_BUFFER_SIZE * STREAM_BUFFER_SIZE, size - fpos);
                         if (part > STREAM_BUFFER_SIZE) {
-                            readed = fread(ptr, 1, part, f);
+                            readed = (int)fread(ptr, 1, part, f);
 
                             #ifdef TEST_SLOW_FIO
-                                LOG("%s read %d + %d\n", name, fpos, (int)readed);
+                                LOG("%s read %d + %d\n", name, fpos, readed);
                                 Sleep(5);
                             #endif
 
@@ -1571,7 +2229,7 @@ struct Stream {
 
                     if (fpos != bufferIndex * STREAM_BUFFER_SIZE) {
                         fpos = bufferIndex * STREAM_BUFFER_SIZE;
-                        fseek(f, fpos, SEEK_SET);
+                        fseek(f, baseOffset + fpos, SEEK_SET);
 
                         #ifdef TEST_SLOW_FIO
                             LOG("%s seek %d\n", name, fpos);
@@ -1584,7 +2242,7 @@ struct Stream {
                     }
 
                     part   = min(STREAM_BUFFER_SIZE, size - fpos);
-                    readed = fread(buffer, 1, part, f);
+                    readed = (int)fread(buffer, 1, part, f);
 
                     #ifdef TEST_SLOW_FIO
                         LOG("%s read %d + %d\n", name, fpos, readed);
@@ -1658,6 +2316,8 @@ struct Stream {
     }
 };
 
+Stream::Pack* Stream::packs[MAX_PACKS];
+Array<char*> Stream::fileList;
 
 #ifdef OS_FILEIO_CACHE
 void osDataWrite(Stream *stream, const char *dir) {
@@ -1795,17 +2455,17 @@ struct BitStream {
     BitStream(uint8 *data, int size) : data(data), end(data + size), index(0), value(0) {}
 
     inline uint32 readBit() {
-       uint32 bit;
+        uint32 bit;
 
-       if (!index--) {
-          value = *data++;
-          index = 7;
-       }
+        if (!index--) {
+            value = *data++;
+            index = 7;
+        }
 
-       bit = value & 1;
-       value >>= 1;
+        bit = value & 1;
+        value >>= 1;
 
-       return bit;
+        return bit;
     }
 
     uint32 read(int count) {
@@ -1908,20 +2568,6 @@ struct BitStream {
 };
 
 
-namespace String {
-
-    void toLower(char *str) {
-        if (!str) return;
-
-        while (char &c = *str++) {
-            if (c >= 'A' && c <= 'Z')
-                c -= 'Z' - 'z';
-        }
-    }
-
-}
-
-
 template <int N>
 struct FixedStr {
     char data[N];
@@ -1940,79 +2586,5 @@ struct FixedStr {
 };
 
 typedef FixedStr<16> str16;
-
-
-template <typename T>
-struct Array {
-    int capacity;
-    int length;
-    T   *items;
-
-    Array(int capacity = 32) : capacity(capacity), length(0), items(NULL) {}
-
-    ~Array() { 
-        clear();
-    }
-
-    void reserve(int capacity) {
-        this->capacity = capacity;
-        if (items)
-            items = (T*)realloc(items, capacity * sizeof(T));
-        else
-            items = (T*)malloc(capacity * sizeof(T));
-    }
-
-    int push(const T &item) {
-        if (!items)
-            items = (T*)malloc(capacity * sizeof(T));
-
-        if (length == capacity)
-            reserve(capacity + capacity / 2);
-
-        items[length] = item;
-        return length++;
-    }
-
-    int pop() {
-        ASSERT(length > 0);
-        return --length;
-    }
-
-    void removeFast(int index) {
-        (*this)[index] = (*this)[length - 1];
-        length--;
-    }
-
-    void remove(int index) {
-        length--;
-        ASSERT(length >= 0);
-        for (int i = index; i < length; i++)
-            items[i] = items[i + 1];
-    }
-
-    void resize(int length) {
-        if (capacity < length)
-            reserve(length);
-        this->length = length;
-    }
-
-    void clear() {
-        length = 0;
-        free(items);
-        items = NULL;
-    }
-
-    void sort() {
-        ::sort(items, length);
-    }
-
-    T& operator[] (int index) {
-        ASSERT(index >= 0 && index < length);
-        return items[index]; 
-    };
-
-    operator T*() const { return items; };
-};
-
 
 #endif

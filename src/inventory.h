@@ -6,17 +6,23 @@
 #include "ui.h"
 #include "savegame.h"
 
-#define INVENTORY_MAX_ITEMS  32
-#define INVENTORY_MAX_RADIUS 688.0f
-#ifdef _OS_PSP
-    #define INVENTORY_BG_SIZE    256
+#define INV_MAX_ITEMS  32
+#define INV_MAX_RADIUS 688.0f
+#if defined(_OS_PSP) || defined(_OS_3DS) || defined(_OS_GCW0)
+    #define INV_BG_SIZE    256
 #else
-    #define INVENTORY_BG_SIZE    512
+    #define INV_BG_SIZE    512
 #endif
 
-#define INVENTORY_HEIGHT     2048.0f
-#define TITLE_LOADING        64.0f
-#define LINE_HEIGHT          20.0f
+#define INV_HEIGHT            2048.0f
+#define INV_EYE_SEPARATION    8.0f
+#define INV_EYE_FOCAL_LENGTH  512.0f
+#define INV_ZNEAR             32.0f
+#define INV_ZFAR              2048.0f
+#define INV_FOV               70.0f
+
+#define TITLE_LOADING         64.0f
+#define LINE_HEIGHT           20.0f
 
 static const struct OptionItem *waitForKey = NULL;
 
@@ -29,16 +35,16 @@ struct OptionItem {
         TYPE_KEY,
     } type;
     StringID title;
-    intptr_t offset;
+    int32    offset;
     uint32   color;
     uint32   icon;
     uint8    maxValue;
     bool     bar;
 
-    OptionItem(Type type = TYPE_EMPTY, int title = STR_EMPTY, intptr_t offset = 0, uint32 color = 0xFFFFFFFF, int icon = 0, uint8 maxValue = 0, bool bar = false) : type(type), title(StringID(title)), offset(offset), color(color), icon(icon), maxValue(maxValue), bar(bar) {}
+    OptionItem(Type type = TYPE_EMPTY, int title = STR_EMPTY, int32 offset = 0, uint32 color = 0xFFFFFFFF, int icon = 0, uint8 maxValue = 0, bool bar = false) : type(type), title(StringID(title)), offset(offset), color(color), icon(icon), maxValue(maxValue), bar(bar) {}
 
     void setValue(uint8 value, Core::Settings *settings) const {
-        *(uint8*)(intptr_t(settings) + offset) = value;
+        *((uint8*)settings + offset) = value;
     }
 
     bool checkValue(uint8 value) const {
@@ -76,14 +82,16 @@ struct OptionItem {
             int maxWidth = UI::getTextSize(STR[color + value]).x;
             maxWidth = maxWidth / 2 + 8;
             x += w * 0.5f;
-            if (checkValue(value - 1)) UI::specOut(vec2(x - maxWidth - 16.0f, y), 108);
-            if (checkValue(value + 1)) UI::specOut(vec2(x + maxWidth, y), 109);
+            if (maxValue != 0xFF) {
+                if (checkValue(value - 1)) UI::specOut(vec2(x - maxWidth - 16.0f, y), 108);
+                if (checkValue(value + 1)) UI::specOut(vec2(x + maxWidth, y), 109);
+            }
         }
         return y + LINE_HEIGHT;
     }
 
     float drawBar(float x, float y, float w, bool active, uint8 value) const {
-        UI::renderBar(UI::BAR_WHITE, vec2(x + (32.0f + 2.0f), y - LINE_HEIGHT + 6 + 2), vec2(w - (64.0f + 4.0f), LINE_HEIGHT - 6 - 4), value / float(maxValue), color, 0xFF000000, 0xFFA0A0A0, 0xFFA0A0A0, 0xFF000000);
+        UI::renderBar(CTEX_WHITE_SPRITE, vec2(x + (32.0f + 2.0f), y - LINE_HEIGHT + 6 + 2), vec2(w - (64.0f + 4.0f), LINE_HEIGHT - 6 - 4), value / float(maxValue), color, 0xFF000000, 0xFFA0A0A0, 0xFFA0A0A0, 0xFF000000);
         UI::specOut(vec2(x + 16.0f, y), icon);
         if (active) {
             if (value >        0) UI::specOut(vec2(x, y), 108);
@@ -94,13 +102,13 @@ struct OptionItem {
 
     float render(float x, float y, float w, bool active, Core::Settings *settings) const {
         if (active)
-            UI::renderBar(UI::BAR_OPTION, vec2(x, y - LINE_HEIGHT + 6), vec2(w, LINE_HEIGHT - 6), 1.0f, 0xFFD8377C, 0);
+            UI::renderBar(CTEX_OPTION, vec2(x, y - LINE_HEIGHT + 6), vec2(w, LINE_HEIGHT - 6), 1.0f, 0xFFD8377C, 0);
 
-        const uint8 &value = *(uint8*)(intptr_t(settings) + offset);
+        const uint8 &value = *((uint8*)settings + offset);
 
         switch (type) {
             case TYPE_TITLE   : 
-                UI::renderBar(UI::BAR_OPTION, vec2(x, y - LINE_HEIGHT + 6), vec2(w, LINE_HEIGHT - 6), 1.0f, 0x802288FF, 0, 0, 0);
+                UI::renderBar(CTEX_OPTION, vec2(x, y - LINE_HEIGHT + 6), vec2(w, LINE_HEIGHT - 6), 1.0f, 0x802288FF, 0, 0, 0);
                 UI::textOut(vec2(x, y), title, UI::aCenter, w, 255, UI::SHADE_GRAY); 
             case TYPE_EMPTY   : break;
             case TYPE_BUTTON  : {
@@ -117,26 +125,35 @@ struct OptionItem {
     }
 };
 
-#define SETTINGS(x) OFFSETOF(Core::Settings, x)
+#define SETTINGS(x) int32(OFFSETOF(Core::Settings, x))
+
+#ifdef INV_SINGLE_PLAYER
+    #define INV_CTRL_START_OPTION 1
+#else
+    #define INV_CTRL_START_OPTION 2
+#endif
 
 static const OptionItem optDetail[] = {
     OptionItem( OptionItem::TYPE_TITLE,  STR_SELECT_DETAIL ),
     OptionItem( ),
+#ifdef INV_QUALITY
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_FILTER,   SETTINGS( detail.filter    ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_LIGHTING, SETTINGS( detail.lighting  ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_SHADOWS,  SETTINGS( detail.shadows   ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_WATER,    SETTINGS( detail.water     ), STR_QUALITY_LOW, 0, 2 ),
+#endif
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_SIMPLE_ITEMS,    SETTINGS( detail.simple    ), STR_OFF, 0, 1 ),
-#if !defined(__LIBRETRO__) && (defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_PSP) || defined(_OS_RPI) || defined(_OS_PSV))
+#ifdef INV_QUALITY
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_RESOLUTION,      SETTINGS( detail.scale     ), STR_SCALE_100, 0, 3 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_VSYNC,    SETTINGS( detail.vsync     ), STR_OFF, 0, 1 ),
 #endif
-#ifndef _OS_PSP
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_STEREO,   SETTINGS( detail.stereo    ), STR_OFF, 0, 
-#if /*defined(_OS_WIN) ||*/ defined(_OS_ANDROID)
-    3 /* with VR option */
-#else
-    2 /* without VR support */
-#endif
+#ifdef INV_STEREO
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_STEREO,   SETTINGS( detail.stereo    ), STR_NO_STEREO, 0, 
+    #if defined(_OS_WIN) || defined(_OS_ANDROID)
+        4 /* with VR option */
+    #else
+        3 /* without VR support */
+    #endif
     ),
 #endif
     OptionItem( ),
@@ -150,23 +167,28 @@ static const OptionItem optSound[] = {
     OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY,         SETTINGS( audio.sound     ), 0xFFFF8000, 102, SND_MAX_VOLUME, true ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_REVERBERATION, SETTINGS( audio.reverb    ), STR_OFF, 0, 1 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_SUBTITLES, SETTINGS( audio.subtitles ), STR_OFF, 0, 1 ),
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_LANGUAGE,  SETTINGS( audio.language  ), STR_LANG_EN, 0, 8 ),
+#ifndef FFP
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_LANGUAGE,  SETTINGS( audio.language  ), STR_LANG_EN, 0, STR_LANG_SV - STR_LANG_EN ),
+#endif
 };
 
 static const OptionItem optControls[] = {
     OptionItem( OptionItem::TYPE_TITLE,  STR_SET_CONTROLS ),
     OptionItem( ),
-    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY,                SETTINGS( playerIndex                    ), STR_PLAYER_1,  0, 1 ),
-#ifndef _OS_CLOVER
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_GAMEPAD, SETTINGS( controls[0].joyIndex           ), STR_GAMEPAD_1, 0, 3 ),
+#ifndef INV_SINGLE_PLAYER
+    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( playerIndex                    ), STR_PLAYER_1,  0, 1 ),
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_GAMEPAD    , SETTINGS( controls[0].joyIndex           ), STR_GAMEPAD_1, 0, 3 ),
 #endif
-#if defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_RPI)
+#ifdef INV_VIBRATION
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_VIBRATION  , SETTINGS( controls[0].vibration          ), STR_OFF,       0, 1 ),
 #endif
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_RETARGET   , SETTINGS( controls[0].retarget           ), STR_OFF,       0, 1 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_MULTIAIM   , SETTINGS( controls[0].multiaim           ), STR_OFF,       0, 1 ),
-#ifndef __LIBRETRO__
+#ifdef INV_GAMEPAD_ONLY
+    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( ctrlIndex                      ), STR_OPT_CONTROLS_KEYBOARD, 0, 0xFF ),
+#else
     OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( ctrlIndex                      ), STR_OPT_CONTROLS_KEYBOARD, 0, 1 ),
+#endif
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cUp        , SETTINGS( controls[0].keys[ cUp        ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cDown      , SETTINGS( controls[0].keys[ cDown      ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cRight     , SETTINGS( controls[0].keys[ cRight     ] ), STR_KEY_FIRST ),
@@ -176,12 +198,13 @@ static const OptionItem optControls[] = {
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cAction    , SETTINGS( controls[0].keys[ cAction    ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cWeapon    , SETTINGS( controls[0].keys[ cWeapon    ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cLook      , SETTINGS( controls[0].keys[ cLook      ] ), STR_KEY_FIRST ),
+#if !(defined(INV_GAMEPAD_ONLY) && defined(INV_GAMEPAD_NO_TRIGGER))
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cDuck      , SETTINGS( controls[0].keys[ cDuck      ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cDash      , SETTINGS( controls[0].keys[ cDash      ] ), STR_KEY_FIRST ),
+#endif
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cRoll      , SETTINGS( controls[0].keys[ cRoll      ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cInventory , SETTINGS( controls[0].keys[ cInventory ] ), STR_KEY_FIRST ),
     OptionItem( OptionItem::TYPE_KEY,    STR_CTRL_FIRST + cStart     , SETTINGS( controls[0].keys[ cStart     ] ), STR_KEY_FIRST ),
-#endif
 };
 
 static OptionItem optControlsPlayer[COUNT(optControls)];
@@ -198,7 +221,8 @@ struct Inventory {
     };
 
     IGame   *game;
-    Texture *background[2];
+    Texture *title;
+    Texture *background[3]; // [LEFT EYE or SINGLE, RIGHT EYE, TEMP]
     Video   *video;
 
     bool    playLogo;
@@ -392,20 +416,19 @@ struct Inventory {
                 case TR::Entity::INV_PASSPORT :
                     if (value != 0) return NULL;
                     optCount = optLoadSlots.length;
-                    return optLoadSlots;
+                    return optLoadSlots.items;
                 case TR::Entity::INV_DETAIL :
                     optCount = COUNT(optDetail);
                     return optDetail;
                 case TR::Entity::INV_SOUND :
                     optCount = COUNT(optSound);
                     return optSound;
-                case TR::Entity::INV_CONTROLS :
-                    ASSERT(optControls[2].offset == SETTINGS( playerIndex) );
+                case TR::Entity::INV_CONTROLS : {
                     for (int i = 0; i < COUNT(optControls); i++) {
                         OptionItem &opt = optControlsPlayer[i];
                         opt = optControls[i];
 
-                        if (i > 2 && opt.offset != SETTINGS( playerIndex ) && opt.offset != SETTINGS( ctrlIndex ) )
+                        if (i > INV_CTRL_START_OPTION && opt.offset != SETTINGS( playerIndex ) && opt.offset != SETTINGS( ctrlIndex ) )
                             opt.offset += sizeof(Core::Settings::Controls) * Core::settings.playerIndex;
 
                         if (opt.type == OptionItem::TYPE_KEY) {
@@ -418,6 +441,7 @@ struct Inventory {
                     }
                     optCount = COUNT(optControlsPlayer);
                     return optControlsPlayer;
+                }
                 default :
                     optCount = 0;
                     return NULL;
@@ -454,21 +478,21 @@ struct Inventory {
 
             opt = opt + slot;
 
-            uint8 &value = *(uint8*)(intptr_t(settings) + opt->offset);
+            uint8 &value = *((uint8*)settings + opt->offset);
 
             switch (key) {
                 case cAction : return (opt->type == OptionItem::TYPE_BUTTON || opt->type == OptionItem::TYPE_KEY) ? opt : NULL;
                 case cUp     : nextSlot(slot, -1); break;
                 case cDown   : nextSlot(slot, +1); break;
                 case cLeft   :
-                    if (opt->type == OptionItem::TYPE_PARAM && opt->checkValue(value - 1)) {
+                    if (opt->type == OptionItem::TYPE_PARAM && (opt->maxValue != 0xFF) && opt->checkValue(value - 1)) {
                         value--;
                         timer = 0.2f;
                         return opt;
                     }    
                     break;
                 case cRight  :
-                    if (opt->type == OptionItem::TYPE_PARAM && opt->checkValue(value + 1)) {
+                    if (opt->type == OptionItem::TYPE_PARAM && (opt->maxValue != 0xFF) && opt->checkValue(value + 1)) {
                         value++;
                         timer = 0.2f;
                         return opt;
@@ -518,11 +542,9 @@ struct Inventory {
         void render(IGame *game, const Basis &basis) {
             if (!anim) return;
 
-            MeshBuilder *mesh = game->getMesh();
-
             TR::Level *level = game->getLevel();
             TR::Model &m     = level->models[desc.model];
-            Basis joints[MAX_SPHERES];
+            Basis joints[MAX_JOINTS];
 
             mat4 matrix;
             matrix.identity();
@@ -535,9 +557,7 @@ struct Inventory {
                 joints[1].rotate(quat(vec3(0.0f, 1.0f, 0.0f), -params.x));
             }
 
-            Core::setBasis(joints, m.mCount);
-
-            mesh->renderModelFull(desc.model);
+            game->renderModelFull(desc.model, false, joints);
         }
 
         void choose() {
@@ -545,7 +565,7 @@ struct Inventory {
             anim->setAnim(0, 0, false);
         }
 
-    } *items[INVENTORY_MAX_ITEMS];
+    } *items[INV_MAX_ITEMS];
 
     static void loadTitleBG(Stream *stream, void *userData) {
         Inventory *inv = (Inventory*)userData;
@@ -559,26 +579,31 @@ struct Inventory {
         }
         inv->titleTimer = inv->game->getLevel()->isTitle() ? 0.0f : 3.0f;
 
-        inv->background[0] = Texture::Load(*stream);
+        inv->title = Texture::Load(*stream);
+        inv->background[0] = inv->title;
         delete stream;
     }
 
     static void loadVideo(Stream *stream, void *userData) {
         Inventory *inv = (Inventory*)userData;
-        if (stream)
-            inv->video = new Video(stream);
-        new Stream(TR::getGameScreen(inv->game->getLevel()->id), loadTitleBG, inv);
+        TR::LevelID id = inv->game->getLevel()->id;
+        if (stream) {
+            inv->video = new Video(stream, id);
+            UI::showSubs(getVideoSubs(id));
+        }
+        new Stream(TR::getGameScreen(id), loadTitleBG, inv);
     }
 
     static void loadLogo(Stream *stream, void *userData) {
         Inventory *inv = (Inventory*)userData;
-        if (stream)
-            inv->video = new Video(stream);
-        else
+        if (stream) {
+            inv->video = new Video(stream, TR::LVL_CUSTOM);
+        } else {
             inv->skipVideo();
+        }
     }
 
-    Inventory() : game(NULL), itemsCount(0) {
+    Inventory() : game(NULL), title(NULL), itemsCount(0) {
         memset(background, 0, sizeof(background));
         reset();
     }
@@ -593,10 +618,17 @@ struct Inventory {
             delete items[i];
         itemsCount = 0;
 
+        if (background[0] == title) {
+            background[0] = NULL;
+        }
+
         for (int i = 0; i < COUNT(background); i++) {
             delete background[i];
             background[i] = NULL;
         }
+
+        delete title;
+        title = NULL;
     }
 
     void reset() {
@@ -761,7 +793,7 @@ struct Inventory {
             return;
         }
 
-        ASSERT(itemsCount < INVENTORY_MAX_ITEMS);
+        ASSERT(itemsCount < INV_MAX_ITEMS);
 
         count = min(UNLIMITED_AMMO, count);
 
@@ -772,7 +804,7 @@ struct Inventory {
         }
 
         int pos = 0;
-        for (int pos = 0; pos < itemsCount; pos++)
+        for (; pos < itemsCount; pos++)
             if (items[pos]->type > type)
                 break;
 
@@ -963,7 +995,11 @@ struct Inventory {
             }
             case TR::Entity::INV_CONTROLS :
                 Core::settings.playerIndex = 0;
-                Core::settings.ctrlIndex   = 0;
+                #ifdef INV_GAMEPAD_ONLY
+                    Core::settings.ctrlIndex = 1;
+                #else
+                    Core::settings.ctrlIndex = 0;
+                #endif
                 break;
             case TR::Entity::INV_DETAIL :
                 settings = Core::settings;
@@ -1080,7 +1116,7 @@ struct Inventory {
             }
         }
         playVideo = false;
-
+        UI::showSubs(STR_EMPTY);
         game->playTrack(0);
         if (game->getLevel()->isTitle()) {
             titleTimer = 0.0f;
@@ -1161,7 +1197,7 @@ struct Inventory {
         else if (Input::down[ikDown]  || joy.down[jkDown]  || joy.L.y >  0.5f)
             key = cDown;
 
-        #ifdef _OS_NX
+        #if defined(_OS_SWITCH) || defined(_OS_3DS) || defined(_OS_GCW0)
         // swap A/B keys for Nintendo (Japanese) UX style
         if (Input::touchTimerVis == 0.0f) {
             if (key == cAction) {
@@ -1185,7 +1221,7 @@ struct Inventory {
             if (Input::lastState[playerIndex] == cLeft || Input::lastState[playerIndex] == cRight)
                 slot ^= 1;
 
-            if (Input::lastState[playerIndex] == cAction) {
+            if (key == cAction) {
                 if (slot == 1) {
                     if (index > -1) {
                         TR::Entity &e = game->getLevel()->entities[index];
@@ -1230,8 +1266,11 @@ struct Inventory {
                         newKey = Input::lastKey;
                     } else {
                         JoyKey jk = Input::joy[Core::settings.controls[Core::settings.playerIndex].joyIndex].lastKey;
-                        if (Core::settings.ctrlIndex == 1 && jk != jkNone)
+                        if (Core::settings.ctrlIndex == 1 && jk != jkNone) {
                             newKey = jk;
+                        } else if (Input::lastKey != ikNone) {
+                            waitForKey = NULL;
+                        }
                     }
 
                     if (newKey != -1) {
@@ -1347,68 +1386,101 @@ struct Inventory {
         return false;
     }
 
-    Texture* getBackgroundTarget() {
-        if (background[0] && (background[0]->origWidth != INVENTORY_BG_SIZE || background[0]->origHeight != INVENTORY_BG_SIZE)) {
-            delete background[0];
+    Texture* getBackgroundTarget(int view) {
+        if (background[0] == title) {
             background[0] = NULL;
         }
 
-        for (int i = 0; i < COUNT(background); i++)
-            if (!background[i])
-                background[i] = new Texture(INVENTORY_BG_SIZE, INVENTORY_BG_SIZE, 1, FMT_RGBA, OPT_TARGET);
+        for (int i = 0; i < COUNT(background); i++) {
+            if (!background[i]) {
+                background[i] = new Texture(INV_BG_SIZE, INV_BG_SIZE, 1, FMT_RGB16, OPT_TARGET);
+            }
+        }
 
-        return background[0];
+        return background[view];
+    }
+
+    void blur(Texture *texInOut, Texture *tmp) {
+    #ifdef _GAPI_C3D
+        return; // TODO
+    #endif
+    #ifdef FFP
+        return; // TODO
+    #endif
+        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
+        float s = 1.0f / INV_BG_SIZE;
+        // vertical
+        Core::setTarget(tmp, NULL, RT_STORE_COLOR);
+        Core::validateRenderState();
+        Core::active.shader->setParam(uParam, vec4(0, s, 0, s));
+        texInOut->bind(sDiffuse);
+        game->getMesh()->renderQuad();
+        // horizontal
+        Core::setTarget(texInOut, NULL, RT_STORE_COLOR);
+        Core::validateRenderState();
+        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
+        Core::active.shader->setParam(uParam, vec4(s, 0, 0, s));
+        tmp->bind(sDiffuse);
+        game->getMesh()->renderQuad();
+    }
+
+    void grayscale(Texture *texIn, Texture *texOut) {
+    #ifdef FFP
+        return; // TODO
+    #endif
+        float s = 1.0f / INV_BG_SIZE;
+        game->setShader(Core::passFilter, Shader::FILTER_GRAYSCALE, false, false);
+        Core::setTarget(texOut, NULL, RT_STORE_COLOR);
+        Core::validateRenderState();
+        Core::active.shader->setParam(uParam, vec4(0.75f, 0.75f, 1.0f, s));
+        texIn->bind(sDiffuse);
+        game->getMesh()->renderQuad();
     }
 
     void prepareBackground() {
+        #ifdef FFP
+            return;
+        #endif
+
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
             return;
 
-        #ifdef _OS_PSP
+        #ifdef _GAPI_GU
             return;
         #endif
-        Core::defaultTarget = getBackgroundTarget();
-        game->renderGame(false);
-        Core::defaultTarget = NULL;
+
+        #ifdef _OS_3DS
+            GAPI::rotate90 = false;
+        #endif
+
+        game->renderGame(false, true);
 
         Core::setDepthTest(false);
         Core::setBlendMode(bmNone);
 
-    #ifdef FFP
-        mat4 m;
-        m.identity();
-        Core::setViewProj(m, m);
-        Core::mModel.identity();
-    #endif
+        int viewsCount = (Core::settings.detail.stereo == Core::Settings::STEREO_OFF) ? 1 : 2;
 
-    #ifdef _OS_PSP
-        //
-    #else
-        // vertical blur
-        Core::setTarget(background[1], NULL, RT_STORE_COLOR);
-        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
-        Core::active.shader->setParam(uParam, vec4(0, 1.0f / INVENTORY_BG_SIZE, 0, 0));
-        background[0]->bind(sDiffuse);
-        game->getMesh()->renderQuad();
+        mat4 mProj, mView;
+        mView.identity();
+        mProj = GAPI::ortho(-1, +1, -1, +1, 0, 1);
+        mProj.scale(vec3(1.0f / 32767.0f));
+        Core::setViewProj(mView, mProj);
 
-        // horizontal blur
-        Core::setTarget(background[0], NULL, RT_STORE_COLOR);
-        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
-        Core::active.shader->setParam(uParam, vec4(1.0f / INVENTORY_BG_SIZE, 0, 0, 0));
-        background[1]->bind(sDiffuse);
-        game->getMesh()->renderQuad();
+        for (int view = 0; view < viewsCount; view++) {
+            blur(background[view], background[2]);
+            grayscale(background[view], background[2]);
+            swap(background[view], background[2]);
+        }
 
-        // grayscale
-        Core::setTarget(background[1], NULL, RT_STORE_COLOR);
-        game->setShader(Core::passFilter, Shader::FILTER_GRAYSCALE, false, false);
-        Core::active.shader->setParam(uParam, vec4(0.75f, 0.75f, 1.0f, 1.0f));
-        background[0]->bind(sDiffuse);
-        game->getMesh()->renderQuad();
-
-        swap(background[0], background[1]);
-    #endif
+        #ifdef _OS_3DS
+            GAPI::rotate90 = true;
+        #endif
 
         Core::setDepthTest(true);
+    }
+
+    float getEyeOffset() {
+        return -Core::eye * INV_EYE_SEPARATION * 0.75f;
     }
 
     void renderItemCount(const Item *item, const vec2 &pos, float width) {
@@ -1442,11 +1514,13 @@ struct Inventory {
             if (item->value == 2) str = STR_EXIT_TO_TITLE;
         }
 
-        UI::textOut(vec2(0, 480 - 32), str, UI::aCenter, UI::width);
+        float eye = getEyeOffset();
+
+        UI::textOut(vec2(eye, 480 - 32), str, UI::aCenter, UI::width);
         int tw = UI::getTextSize(STR[str]).x;
 
-        if (item->value > 0) UI::specOut(vec2((UI::width - tw) * 0.5f - 32.0f, 480 - 32), 108);
-        if (item->value < 2) UI::specOut(vec2((UI::width + tw) * 0.5f + 16.0f, 480 - 32), 109);
+        if (item->value > 0) UI::specOut(vec2((UI::width - tw) * 0.5f - 32.0f + eye, 480 - 32), 108);
+        if (item->value < 2) UI::specOut(vec2((UI::width + tw) * 0.5f + 16.0f + eye, 480 - 32), 109);
 
         if (item->value != 0) return;
 
@@ -1469,12 +1543,11 @@ struct Inventory {
         if (item->type == TR::Entity::INV_CONTROLS || item->type == TR::Entity::INV_DETAIL)
             width += 80;
 
-        float eye = UI::width * Core::eye * 0.02f;
-        float x = ( UI::width  - width  ) * 0.5f - eye;
+        float x = ( UI::width  - width  ) * 0.5f + getEyeOffset();
         float y = ( UI::height - height ) * 0.5f + LINE_HEIGHT;
 
     // background
-        UI::renderBar(UI::BAR_OPTION, vec2(x, y - 16.0f), vec2(width, height), 0.0f, 0, 0xC0000000);
+        UI::renderBar(CTEX_OPTION, vec2(x, y - 16.0f), vec2(width, height), 0.0f, 0, 0xC0000000);
 
         x     += 8.0f;
         width -= 16.0f;
@@ -1536,15 +1609,17 @@ struct Inventory {
         return def;
     }
 
-    void renderItemText(float eye, Item *item) {
+    void renderItemText(Item *item) {
+        float eye = getEyeOffset() * 0.5f;
+
         if (item->type == TR::Entity::INV_PASSPORT && phaseChoose == 1.0f) {
             //
         } else {
             StringID str = getItemName(item->desc.str, game->getLevel()->id, item->type);
-            UI::textOut(vec2(-eye, 480 - 32), str, UI::aCenter, UI::width);
+            UI::textOut(vec2(eye, 480 - 32), str, UI::aCenter, UI::width);
         }
 
-        renderItemCount(item, vec2(UI::width / 2 - 160 - eye, 480 - 96), 320);
+        renderItemCount(item, vec2(UI::width / 2 - 160, 480 - 96), 320);
 
     // show health bar in inventory when selector is over medikit
         if (item->type == TR::Entity::INV_MEDIKIT_BIG || item->type == TR::Entity::INV_MEDIKIT_SMALL) {
@@ -1555,16 +1630,16 @@ struct Inventory {
                 vec2 size = vec2(180, 10);
                 vec2 pos;
                 if (Core::settings.detail.stereo == Core::Settings::STEREO_VR) {
-                    pos = vec2((UI::width - size.x) * 0.5f - eye * 4.0f, 96);
+                    pos = vec2((UI::width - size.x) * 0.5f, 96);
                 } else {
                     if (game->getLara(1) && playerIndex == 0) {
-                        pos = vec2(32 - eye, 32);
+                        pos = vec2(32, 32);
                     } else {
-                        pos = vec2(UI::width - 32 - size.x - eye, 32);
+                        pos = vec2(UI::width - 32 - size.x, 32);
                     }
                 }
 
-                UI::renderBar(UI::BAR_HEALTH, pos, size, health);
+                UI::renderBar(CTEX_HEALTH, pos, size, health);
             }
         }
 
@@ -1581,7 +1656,7 @@ struct Inventory {
                 case TR::Entity::INV_GAMMA     :
                 case TR::Entity::INV_STOPWATCH :
                 case TR::Entity::INV_MAP       :
-                    UI::textOut(vec2(-eye, 240), STR_EMPTY, UI::aCenter, UI::width);
+                    UI::textOut(vec2(0, 240), STR_EMPTY, UI::aCenter, UI::width);
                     break;
                 default : ;
             }
@@ -1600,9 +1675,9 @@ struct Inventory {
 
         vec2 cpos(1286, 256 + 1280 * (1.0f - phaseRing));
         float ringTilt      = cpos.angle();
-        float radius        = phaseRing * INVENTORY_MAX_RADIUS * phase;
+        float radius        = phaseRing * INV_MAX_RADIUS * phase;
         float collapseAngle = phaseRing * phase * PI - PI;
-        float ringHeight    = lerp(float(this->page), float(targetPage), quintic(phasePage)) * INVENTORY_HEIGHT;
+        float ringHeight    = lerp(float(this->page), float(targetPage), quintic(phasePage)) * INV_HEIGHT;
         float angle         = getAngle(pageItemIndex[page], count);
 
         if (phaseSelect < 1.0f)
@@ -1628,7 +1703,7 @@ struct Inventory {
                 rd +=  296 * phaseChoose;
             }
 
-            Basis b = basis * Basis(quat(vec3(0, 1, 0), PI + ia - a), vec3(sinf(a), 0, -cosf(a)) * rd - vec3(0, item->desc.page * INVENTORY_HEIGHT - rh, 0));
+            Basis b = basis * Basis(quat(vec3(0, 1, 0), PI + ia - a), vec3(sinf(a), 0, -cosf(a)) * rd - vec3(0, item->desc.page * INV_HEIGHT - rh, 0));
 
             if (item->type == TR::Entity::INV_COMPASS) {
                 b.rotate(quat(vec3(1.0f, 0.0f, 0.0f), -phaseChoose * PI * 0.1f));
@@ -1641,7 +1716,7 @@ struct Inventory {
     }
 
     void renderTitleBG(float sx = 1.0f, float sy = 1.0f, uint8 alpha = 255, float cropW = 1.0f, float cropH = 1.0f) {
-        float aspectSrc, aspectDst, aspectImg, ax, ay, tx, ty;
+        float aspectSrc, ax, ay, tx, ty;
 
         if (background[0]) {
             Texture *tex = background[0];
@@ -1652,15 +1727,20 @@ struct Inventory {
             float ox = sx * origW;
             float oy = sy * origH;
             aspectSrc = ox / oy;
-            aspectDst = float(Core::width) / float(Core::height);
             ax = origW / tex->width;
             ay = origH / tex->height;
         } else {
             tx = ty = 0.0f;
             aspectSrc = ax = ay = 1.0f;
-            aspectDst = float(Core::width) / float(Core::height);
         }
-        aspectImg = aspectSrc / aspectDst;
+
+        float aspectDst = float(Core::width) / float(Core::height) * Core::aspectFix;
+
+        #ifdef _OS_WP8
+            aspectDst = 1.0f / aspectDst;
+        #endif
+
+        float aspectImg = aspectSrc / aspectDst;
 
         #ifdef FFP
             mat4 m;
@@ -1670,47 +1750,40 @@ struct Inventory {
             Core::mModel.scale(vec3(1.0f / 32767.0f));
         #endif
 
-        Core::setBlendMode(alpha < 255 ? bmAlpha : bmNone);
+        short o_frame = 32767;
+        short i_frame = 16384;
 
-        Index  indices[6 * 3] = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11 };
-        Vertex vertices[4 * 3];
-
-        short2 size;
+        short2 size = short2(short(i_frame * aspectImg), i_frame);
         if (aspectImg < 1.0f) {
-            size.x = short(32767 * aspectImg);
-            size.y = 32767;
-
-            vertices[ 4].coord = short4( -32767,  size.y, 0, 0);
-            vertices[ 5].coord = short4(-size.x,  size.y, 0, 0);
-            vertices[ 6].coord = short4(-size.x, -size.y, 0, 0);
-            vertices[ 7].coord = short4( -32767, -size.y, 0, 0);
-
-            vertices[ 8].coord = short4( size.x,  size.y, 0, 0);
-            vertices[ 9].coord = short4(  32767,  size.y, 0, 0);
-            vertices[10].coord = short4(  32767, -size.y, 0, 0);
-            vertices[11].coord = short4( size.x, -size.y, 0, 0);
+            size.x = short(i_frame * aspectImg);
+            size.y = i_frame;
         } else {
-            size.x = 32767;
-            size.y = short(32767 / aspectImg);
-
-            vertices[ 4].coord = short4(-size.x,   32767, 0, 0);
-            vertices[ 5].coord = short4( size.x,   32767, 0, 0);
-            vertices[ 6].coord = short4( size.x,  size.y, 0, 0);
-            vertices[ 7].coord = short4(-size.x,  size.y, 0, 0);
-
-            vertices[ 8].coord = short4(-size.x, -size.y, 0, 0);
-            vertices[ 9].coord = short4( size.x, -size.y, 0, 0);
-            vertices[10].coord = short4( size.x,  -32767, 0, 0);
-            vertices[11].coord = short4(-size.x,  -32767, 0, 0);
+            size.x = i_frame;
+            size.y = short(i_frame / aspectImg);
         }
 
-        short2 t0(short(tx * 32767), short(ty * 32767));
-        short2 t1(t0.x + short(ax * 32767), t0.y + short(ay * 32767));
+        float eye = -getEyeOffset() * size.x / 320.0f;
+        if (titleTimer > 0.0f || video) {
+            eye = 0.0f;
+        }
 
-        vertices[ 0].coord = short4(-size.x,  size.y, 0, 0);
-        vertices[ 1].coord = short4( size.x,  size.y, 0, 0);
-        vertices[ 2].coord = short4( size.x, -size.y, 0, 0);
-        vertices[ 3].coord = short4(-size.x, -size.y, 0, 0);
+        Index  indices[10 * 3] = { 0,1,2, 0,2,3, 8,9,5, 8,5,4, 9,10,6, 9,6,5, 10,11,7, 10,7,6, 11,8,4, 11,4,7 };
+        Vertex vertices[4 * 3];
+
+        vertices[ 0].coord = short4(-size.x,  size.y, 0, 1);
+        vertices[ 1].coord = short4( size.x,  size.y, 0, 1);
+        vertices[ 2].coord = short4( size.x, -size.y, 0, 1);
+        vertices[ 3].coord = short4(-size.x, -size.y, 0, 1);
+
+        vertices[ 4].coord = vertices[0].coord;
+        vertices[ 5].coord = vertices[1].coord;
+        vertices[ 6].coord = vertices[2].coord;
+        vertices[ 7].coord = vertices[3].coord;
+
+        vertices[ 8].coord = short4(-o_frame,  o_frame, 0, 1);
+        vertices[ 9].coord = short4( o_frame,  o_frame, 0, 1);
+        vertices[10].coord = short4( o_frame, -o_frame, 0, 1);
+        vertices[11].coord = short4(-o_frame, -o_frame, 0, 1);
 
         vertices[ 0].light =
         vertices[ 1].light =
@@ -1724,6 +1797,9 @@ struct Inventory {
         vertices[ 9].light = 
         vertices[10].light = 
         vertices[11].light = ubyte4(0, 0, 0, alpha);
+
+        short2 t0(short(tx * 32767), short(ty * 32767));
+        short2 t1(t0.x + short(ax * 32767), t0.y + short(ay * 32767));
 
         vertices[ 0].texCoord = short4(t0.x, t0.y, 0, 0);
         vertices[ 1].texCoord = short4(t1.x, t0.y, 0, 0);
@@ -1744,18 +1820,27 @@ struct Inventory {
             background[0]->bind(sDiffuse);
         }
 
+        Core::setBlendMode(alpha < 255 ? bmAlpha : bmNone);
+
+        mat4 mProj, mView;
+        mView.identity();
+        mProj = GAPI::ortho(-1, +1, -1, +1, 0, 1);
+        mProj.scale(vec3(1.0f / max(size.x, size.y)));
+        mProj.translate(vec3(eye, 0.0f, 0.0f));
+        Core::setViewProj(mView, mProj);
+
         game->setShader(Core::passFilter, Shader::FILTER_UPSCALE, false, false);
-        Core::active.shader->setParam(uParam, vec4(float(Core::active.textures[sDiffuse]->width), float(Core::active.textures[sDiffuse]->height), Core::getTime() * 0.001f, 0.0f));
+        Core::active.shader->setParam(uParam, vec4(float(Core::active.textures[sDiffuse]->width), float(Core::active.textures[sDiffuse]->height), 0.0f, 0.0f));
         game->getMesh()->renderBuffer(indices, COUNT(indices), vertices, COUNT(vertices));
     }
 
-    void renderGameBG() {
+    void renderGameBG(int view) {
         Index  indices[6] = { 0, 1, 2, 0, 2, 3 };
         Vertex vertices[4];
-        vertices[0].coord = short4(-32767,  32767, 0, 0);
-        vertices[1].coord = short4( 32767,  32767, 0, 0);
-        vertices[2].coord = short4( 32767, -32767, 0, 0);
-        vertices[3].coord = short4(-32767, -32767, 0, 0);
+        vertices[0].coord = short4(-32767,  32767, 0, 1);
+        vertices[1].coord = short4( 32767,  32767, 0, 1);
+        vertices[2].coord = short4( 32767, -32767, 0, 1);
+        vertices[3].coord = short4(-32767, -32767, 0, 1);
         vertices[0].light =
         vertices[1].light =
         vertices[2].light =
@@ -1773,14 +1858,26 @@ struct Inventory {
         m.identity();
         Core::setViewProj(m, m);
         Core::mModel.identity();
-        Core::mModel.scale(vec3(1.0f / 32767.0f));
+
     #else
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR || !background[0]) {
             backTex = Core::blackTex; // black background 
-        } else
-            backTex = background[0]; // blured grayscale image
+        } else {
+            // blured grayscale image
+            if (Core::settings.detail.stereo == Core::Settings::STEREO_SPLIT) {
+                backTex = background[view];
+            } else {
+                backTex = background[Core::eye <= 0.0f ? 0 : 1];
+            }
+        }
     #endif
         backTex->bind(sDiffuse);
+
+        mat4 mProj, mView;
+        mView.identity();
+        mProj = GAPI::ortho(-1, +1, -1, +1, 0, 1);
+        mProj.scale(vec3(1.0f / 32767.0f));
+        Core::setViewProj(mView, mProj);
 
         game->setShader(Core::passFilter, Shader::FILTER_UPSCALE, false, false);
         Core::active.shader->setParam(uParam, vec4(float(Core::active.textures[sDiffuse]->width), float(Core::active.textures[sDiffuse]->height), 0.0f, 0.0f));
@@ -1789,11 +1886,12 @@ struct Inventory {
         game->getMesh()->renderBuffer(indices, COUNT(indices), vertices, COUNT(vertices));
     }
 
-    void renderBackground() {
+    void renderBackground(int view) {
         if (!isActive() && titleTimer == 0.0f)
             return;
 
         Core::setDepthTest(false);
+        Core::setDepthWrite(false);
 
         uint8 alpha;
         if (!isActive() && titleTimer > 0.0f && titleTimer < 1.0f)
@@ -1810,16 +1908,17 @@ struct Inventory {
             if (game->getLevel()->isTitle())
                 renderTitleBG(1.0f, sy, alpha);
             else
-                renderGameBG();
+                renderGameBG(view);
         } else {
             if (background[1])
-                renderGameBG();
+                renderGameBG(view);
             else
                 renderTitleBG(1.0f, sy, alpha);
         }
 
         Core::setBlendMode(bmPremult);
         Core::setDepthTest(true);
+        Core::setDepthWrite(true);
     }
 
     void setupCamera(float aspect, bool ui = false) {
@@ -1834,8 +1933,8 @@ struct Inventory {
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
             pos.z -= 256.0f;
 
-        if (Core::settings.detail.stereo == Core::Settings::STEREO_ON)
-            pos.x += Core::eye * 8.0f;
+        if (Core::settings.detail.stereo == Core::Settings::STEREO_SBS || Core::settings.detail.stereo == Core::Settings::STEREO_ANAGLYPH)
+            pos.x += Core::eye * INV_EYE_SEPARATION;
 
         Core::mViewInv = mat4(pos, pos + vec3(0, 0, 1), vec3(0, -1, 0));
 
@@ -1846,10 +1945,12 @@ struct Inventory {
         } else
             head.e00 = INF;
 
-        if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
+        if (Core::settings.detail.stereo == Core::Settings::STEREO_VR) {
             Core::mProj = Input::hmd.proj[Core::eye == -1.0f ? 0 : 1];
-        else
-            Core::mProj = GAPI::perspective(70.0f, aspect, 32.0f, 2048.0f);
+        } else {
+            float eyeSep = Core::eye * INV_EYE_SEPARATION * INV_ZNEAR / INV_EYE_FOCAL_LENGTH;
+            Core::mProj = GAPI::perspective(INV_FOV, aspect, INV_ZNEAR, INV_ZFAR, eyeSep);
+        }
 
         Core::mView   = Core::mViewInv.inverseOrtho();
         Core::viewPos = Core::mViewInv.getPos();
@@ -1894,8 +1995,6 @@ struct Inventory {
             return;
 
     // items
-        game->setupBinding();
-
         setupCamera(aspect);
 
         UI::setupInventoryShading(vec3(0.0f));
@@ -1909,10 +2008,12 @@ struct Inventory {
         char buf[256];
         char time[16];
 
-        int secretsMax = 3;
-        int secrets = ((saveStats.secrets & 1) != 0) +
-                      ((saveStats.secrets & 2) != 0) +
-                      ((saveStats.secrets & 4) != 0);
+        int secretsMax = TR::LEVEL_INFO[saveStats.level].secrets;
+        int secrets = ((saveStats.secrets & (1 << 0)) != 0) +
+                      ((saveStats.secrets & (1 << 1)) != 0) +
+                      ((saveStats.secrets & (1 << 2)) != 0) + 
+                      ((saveStats.secrets & (1 << 3)) != 0) + 
+                      ((saveStats.secrets & (1 << 4)) != 0);
 
         int s = saveStats.time % 60;
         int m = saveStats.time / 60 % 60;
@@ -1939,65 +2040,64 @@ struct Inventory {
 
         static const StringID pageTitle[PAGE_MAX] = { STR_OPTION, STR_INVENTORY, STR_ITEMS, STR_SAVEGAME, STR_LEVEL_STATS };
 
-        float eye = UI::width * Core::eye * 0.01f;
-
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR) {
             setupCamera(1.0f, true);
             Core::active.shader->setParam(uViewProj, Core::mViewProj);
-            eye = 0.0f;
         }
 
+        float eye = getEyeOffset() * 0.5f;
+
         if (page == PAGE_SAVEGAME) {
-            UI::renderBar(UI::BAR_OPTION, vec2(-eye + UI::width / 2 - 120, 240 - 14), vec2(240, LINE_HEIGHT - 6), 1.0f, 0x802288FF, 0, 0, 0);
-            UI::textOut(vec2(-eye, 240), pageTitle[page], UI::aCenter, UI::width);
-            UI::renderBar(UI::BAR_OPTION, vec2(-eye - 48 * slot + UI::width / 2, 240 + 24 - 16), vec2(48, 18), 1.0f, 0xFFD8377C, 0);
-            UI::textOut(vec2(-eye - 48 + UI::width / 2, 240 + 24), STR_YES, UI::aCenter, 48);
-            UI::textOut(vec2(-eye + UI::width / 2, 240 + 24), STR_NO, UI::aCenter, 48);
+            UI::renderBar(CTEX_OPTION, vec2(UI::width / 2 - 120, 240 - 14), vec2(240, LINE_HEIGHT - 6), 1.0f, 0x802288FF, 0, 0, 0);
+            UI::textOut(vec2(0, 240), pageTitle[page], UI::aCenter, UI::width);
+            UI::renderBar(CTEX_OPTION, vec2(-slot * 48 + UI::width / 2, 240 + 24 - 16), vec2(48, 18), 1.0f, 0xFFD8377C, 0);
+            UI::textOut(vec2(UI::width / 2 - 48, 240 + 24), STR_YES, UI::aCenter, 48);
+            UI::textOut(vec2(UI::width / 2, 240 + 24), STR_NO, UI::aCenter, 48);
             return;
         }
 
         if (page == PAGE_LEVEL_STATS) {
-            showLevelStats(vec2(-eye, 180));
+            showLevelStats(vec2(0, 180));
             return;
         }
 
         if (!game->getLevel()->isTitle()) 
-            UI::textOut(vec2(-eye, 32), pageTitle[page], UI::aCenter, UI::width);
+            UI::textOut(vec2(eye, 32), pageTitle[page], UI::aCenter, UI::width);
 
         if (canFlipPage(-1)) {
-            UI::textOut(vec2(16 - eye, 32), "[", UI::aLeft, UI::width);
-            UI::textOut(vec2(-eye, 32), "[", UI::aRight, UI::width - 20);
+            UI::textOut(vec2(16, 32), "[", UI::aLeft, UI::width);
+            UI::textOut(vec2( 0, 32), "[", UI::aRight, UI::width - 20);
         }
 
         if (canFlipPage(1)) {
-            UI::textOut(vec2(16 - eye, 480 - 16), "]", UI::aLeft, UI::width);
-            UI::textOut(vec2(-eye,  480 - 16), "]", UI::aRight, UI::width - 20);
+            UI::textOut(vec2(16, 480 - 16), "]", UI::aLeft, UI::width);
+            UI::textOut(vec2( 0, 480 - 16), "]", UI::aRight, UI::width - 20);
         }
-
-        if (index == targetIndex && page == targetPage)
-            renderItemText(eye, items[getGlobalIndex(page, index)]);
 
     // inventory controls help
 #ifndef __LIBRETRO__
         if (page == targetPage && Input::touchTimerVis <= 0.0f) {
-            float dx = 32.0f - eye;
+            float dx = 32.0f;
             char buf[64];
             const char *bSelect = STR[STR_KEY_FIRST + ikEnter];
             const char *bBack   = STR[STR_KEY_FIRST + Core::settings.controls[playerIndex].keys[cInventory].key];
 
-            #ifdef _OS_NX
+            #if defined(_OS_SWITCH) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_XBOX) || defined(_OS_XB1)
                 bSelect = "A";
                 bBack   = "B";
             #endif
 
             sprintf(buf, STR[STR_HELP_SELECT], bSelect);
-            UI::textOut(vec2(dx, 480 - 64), buf, UI::aLeft, UI::width);
+            UI::textOut(vec2(eye + dx, 480 - 64), buf, UI::aLeft, UI::width);
             if (chosen) {
                 sprintf(buf, STR[STR_HELP_BACK], bBack);
-                UI::textOut(vec2(0, 480 - 64), buf, UI::aRight, UI::width - dx);
+                UI::textOut(vec2(eye, 480 - 64), buf, UI::aRight, UI::width - dx);
             }
         }
 #endif
+        if (index == targetIndex && page == targetPage) {
+            renderItemText(items[getGlobalIndex(page, index)]);
+        }
     }
 };
 

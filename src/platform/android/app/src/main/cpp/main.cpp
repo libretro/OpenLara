@@ -19,7 +19,7 @@ JavaVM *jvm;
 // timing
 time_t startTime;
 
-int osGetTime() {
+int osGetTimeMS() {
     timeval t;
     gettimeofday(&t, NULL);
     return int((t.tv_sec - startTime) * 1000 + t.tv_usec / 1000);
@@ -189,7 +189,7 @@ JNI_METHOD(void, nativeFrameRender)(JNIEnv* env) {
 }
 
 JNI_METHOD(void, nativeResize)(JNIEnv* env, jobject obj, jint x, jint y, jint w, jint h) {
-    Core::viewportDef = Viewport(x, y, w, h);
+    Core::viewportDef = short4(x, y, w, h);
     Core::x      = x;
     Core::y      = y;
     Core::width  = w;

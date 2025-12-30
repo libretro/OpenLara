@@ -6,26 +6,27 @@
 #include "controller.h"
 #include "camera.h"
 
-#define NO_CLIP_PLANE  1000000.0f
+#define NO_WATER_HEIGHT  1000000.0f
 
-#if defined(_OS_IOS) || defined(_GAPI_D3D9) || defined(_GAPI_GXM)
+#if defined(_OS_IOS) || defined(_GAPI_D3D9) || defined(_GAPI_D3D11) || defined(_GAPI_GXM)
     #define USE_SCREEN_TEX
 #endif
 
-struct ShaderCache {
-    enum Effect { FX_NONE = 0, FX_UNDERWATER = 1, FX_ALPHA_TEST = 2, FX_CLIP_PLANE = 4 };
+#if defined(_GAPI_D3D8) || defined(_GAPI_D3D9) || defined(_GAPI_D3D11)
+    #define EARLY_CLEAR
+#endif
 
-    Shader *shaders[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST | FX_CLIP_PLANE) + 1];
-    PSO    *pso[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST | FX_CLIP_PLANE) + 1][bmMAX];
+struct ShaderCache {
+    enum Effect { FX_NONE = 0, FX_UNDERWATER = 1, FX_ALPHA_TEST = 2 };
+
+    Shader *shaders[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST) + 1];
+    PSO    *pso[Core::passMAX][Shader::MAX][(FX_UNDERWATER | FX_ALPHA_TEST) + 1][bmMAX];
 
     ShaderCache() {
         memset(shaders, 0, sizeof(shaders));
 
         LOG("shader: cache warm-up...\n");
         prepareCompose(FX_NONE);
-        if (Core::settings.detail.water > Core::Settings::LOW && !Core::support.clipDist)
-            prepareCompose(FX_CLIP_PLANE);
-
         prepareAmbient(FX_NONE);
 
         if (Core::settings.detail.shadows > Core::Settings::LOW)
@@ -89,8 +90,8 @@ struct ShaderCache {
     void prepareSky(int fx) {
         compile(Core::passSky, Shader::DEFAULT, fx, rsBase);
         if (Core::support.tex3D) {
-            compile(Core::passSky, Shader::SKY_CLOUDS,       fx, rsBase);
-            compile(Core::passSky, Shader::SKY_CLOUDS_AZURE, fx, rsBase);
+            compile(Core::passSky, Shader::SKY_CLOUDS, fx, rsBase);
+            compile(Core::passSky, Shader::SKY_AZURE,  fx, rsBase);
         }
     }
 
@@ -99,7 +100,9 @@ struct ShaderCache {
         compile(Core::passWater, Shader::WATER_SIMULATE, fx, RS_COLOR_WRITE);
         compile(Core::passWater, Shader::WATER_DROP,     fx, RS_COLOR_WRITE);
         compile(Core::passWater, Shader::WATER_RAYS,     fx, RS_COLOR_WRITE | RS_DEPTH_TEST);
-        compile(Core::passWater, Shader::WATER_CAUSTICS, fx, RS_COLOR_WRITE);
+        if (Core::support.derivatives) {
+            compile(Core::passWater, Shader::WATER_CAUSTICS, fx, RS_COLOR_WRITE);
+        }
         compile(Core::passWater, Shader::WATER_COMPOSE,  fx, RS_COLOR_WRITE | RS_DEPTH_TEST);
     }
 
@@ -108,6 +111,7 @@ struct ShaderCache {
         compile(Core::passFilter, Shader::FILTER_DOWNSAMPLE, fx, RS_COLOR_WRITE);
         compile(Core::passFilter, Shader::FILTER_GRAYSCALE,  fx, RS_COLOR_WRITE);
         compile(Core::passFilter, Shader::FILTER_BLUR,       fx, RS_COLOR_WRITE);
+        compile(Core::passFilter, Shader::FILTER_ANAGLYPH,   fx, RS_COLOR_WRITE);
     }
 
     void prepareGUI(int fx) {
@@ -152,8 +156,6 @@ struct ShaderCache {
                 if (fx & FX_ALPHA_TEST) SD_ADD(ALPHA_TEST);
 
                 if (pass == Core::passCompose) {
-                    if (fx & FX_CLIP_PLANE)
-                        SD_ADD(CLIP_PLANE);
                     if (Core::settings.detail.lighting > Core::Settings::MEDIUM && (type == Shader::ENTITY))
                         SD_ADD(OPT_AMBIENT);
                     if (Core::settings.detail.shadows  > Core::Settings::LOW && (type == Shader::ENTITY || type == Shader::ROOM))
@@ -192,9 +194,6 @@ struct ShaderCache {
 
     void bind(Core::Pass pass, Shader::Type type, int fx) {
         Core::pass = pass;
-
-        if (Core::support.clipDist)
-            fx &= ~ShaderCache::FX_CLIP_PLANE;
 
         Shader *shader = getShader(pass, type, fx);
         if (shader) {
@@ -281,6 +280,11 @@ struct AmbientCache {
         // second pass - downsample it
         Core::setDepthTest(false);
 
+        mat4 mProj, mView;
+        mView.identity();
+        mProj = GAPI::ortho(-1, +1, -1, +1, 0, 1);
+        mProj.scale(vec3(1.0f / 32767.0f));
+        Core::setViewProj(mView, mProj);
         game->setShader(Core::passFilter, Shader::FILTER_DOWNSAMPLE);
 
         for (int i = 1; i < 4; i++) {
@@ -292,6 +296,7 @@ struct AmbientCache {
                 Texture *src = textures[j * 4 + i - 1];
                 Texture *dst = textures[j * 4 + i];
                 Core::setTarget(dst, NULL, RT_STORE_COLOR);
+                Core::validateRenderState();
                 src->bind(sDiffuse);
                 game->getMesh()->renderQuad();
             }
@@ -442,9 +447,6 @@ struct WaterCache {
         vec3    pos, size;
         Texture *mask;
         Texture *caustics;
-    #ifdef BLUR_CAUSTICS
-        Texture *caustics_tmp;
-    #endif
         Texture *data[2];
 
         Item() {
@@ -528,9 +530,6 @@ struct WaterCache {
             delete[] mf;
 
             caustics = Core::settings.detail.water > Core::Settings::MEDIUM ? new Texture(512, 512, 1, FMT_RGBA, OPT_TARGET | OPT_DEPEND) : NULL;
-            #ifdef BLUR_CAUSTICS
-                caustics_tmp = Core::settings.detail.water > Core::Settings::MEDIUM ? new Texture(512, 512, 1, Texture::RGBA) : NULL;
-            #endif
             
             blank = false;
         }
@@ -539,9 +538,6 @@ struct WaterCache {
             delete data[0];
             delete data[1];
             delete caustics;
-        #ifdef BLUR_CAUSTICS
-            delete caustics_tmp;
-        #endif
             delete mask;
             mask = caustics = data[0] = data[1] = NULL;
         }
@@ -689,10 +685,12 @@ struct WaterCache {
 
             Core::active.shader->setParam(uParam, vec4(p.x, p.z, drop.radius * DETAIL, -drop.strength));
 
-            item.data[0]->bind(sNormal);
             Core::setTarget(item.data[1], NULL, RT_STORE_COLOR);
             Core::setViewport(0, 0, int(s.x + 0.5f), int(s.y + 0.5f));
+            Core::validateRenderState();
+            item.data[0]->bind(sNormal);
             game->getMesh()->renderQuad();
+            item.data[0]->unbind(sNormal);
             swap(item.data[0], item.data[1]);
         }
     }
@@ -709,10 +707,12 @@ struct WaterCache {
 
         while (item.timer >= SIMULATE_TIMESTEP) {
         // water step
-            item.data[0]->bind(sNormal);
             Core::setTarget(item.data[1], NULL, RT_STORE_COLOR);
             Core::setViewport(0, 0, int(s.x + 0.5f), int(s.y + 0.5f));
+            Core::validateRenderState();
+            item.data[0]->bind(sNormal);
             game->getMesh()->renderQuad();
+            item.data[0]->unbind(sNormal);
             swap(item.data[0], item.data[1]);
             item.timer -= SIMULATE_TIMESTEP;
         }
@@ -730,29 +730,14 @@ struct WaterCache {
 
         Core::active.shader->setParam(uTexParam, vec4(1.0f / item.data[0]->width, 1.0f / item.data[0]->height, sx, sz));
 
-        Core::whiteTex->bind(sReflect);
-        item.data[0]->bind(sNormal);
+        item.caustics->unbind(sReflect);
         Core::setTarget(item.caustics, NULL, RT_CLEAR_COLOR | RT_STORE_COLOR);
         Core::validateRenderState(); // force clear color for borders
         Core::setViewport(1, 1, item.caustics->width - 1, item.caustics->width - 1); // leave 2px for black border
+        Core::whiteTex->bind(sReflect);
+        item.data[0]->bind(sNormal);
         game->getMesh()->renderPlane();
-    #ifdef BLUR_CAUSTICS
-        // v blur
-        Core::setTarget(item.caustics_tmp, CLEAR_ALL);
-        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
-        Core::active.shader->setParam(uParam, vec4(0, 1, 1.0f / item.caustics->width, 0));;
-        item.caustics->bind(sDiffuse);
-        game->getMesh()->renderQuad();
-        Core::invalidateTarget(false, true);
-
-        // h blur
-        Core::setTarget(item.caustics, CLEAR_ALL);
-        game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
-        Core::active.shader->setParam(uParam, vec4(1, 0, 1.0f / item.caustics->width, 0));;
-        item.caustics_tmp->bind(sDiffuse);
-        game->getMesh()->renderQuad();
-        Core::invalidateTarget(false, true);
-    #endif
+        item.data[0]->unbind(sNormal);
     }
 
     void renderRays() {
@@ -820,8 +805,8 @@ struct WaterCache {
 
 
     Texture* getScreenTex() {
-        int w = Core::viewportDef.width;
-        int h = Core::viewportDef.height;
+        int w = Core::viewportDef.z;
+        int h = Core::viewportDef.w;
     // get refraction texture
         if (!refract || w != refract->origWidth || h != refract->origHeight) {
             PROFILE_MARKER("WATER_REFRACT_INIT");
@@ -848,14 +833,16 @@ struct WaterCache {
 
         if (screen) {
             Core::setTarget(refract, NULL, RT_LOAD_DEPTH | RT_STORE_COLOR | RT_STORE_DEPTH);
+            Core::validateRenderState();
             bool flip = false;
-            #if defined(_GAPI_D3D9) || defined(_GAPI_GXM)
+            #if defined(_GAPI_D3D9) || defined(_GAPI_D3D11) || defined(_GAPI_GXM)
                 flip = true;
             #endif
             blitTexture(screen, flip);
             Core::setTarget(screen, NULL, RT_LOAD_COLOR | RT_LOAD_DEPTH | RT_STORE_COLOR);
+            Core::validateRenderState();
         } else {
-            Core::copyTarget(refract, 0, 0, x, y, Core::viewportDef.width, Core::viewportDef.height); // copy framebuffer into refraction texture
+            Core::copyTarget(refract, 0, 0, x, y, Core::viewportDef.z, Core::viewportDef.w); // copy framebuffer into refraction texture
         }
     }
 
@@ -896,7 +883,7 @@ struct WaterCache {
         game->setupBinding();
 
     // merge visible rooms for all items
-        int roomsList[256];
+        RoomDesc roomsList[256];
         int roomsCount = 0;
 
         for (int i = 0; i < level->roomsCount; i++)
@@ -934,18 +921,14 @@ struct WaterCache {
             }
 
             float waterLevel = items[waterItem].pos.y;
-
-            reflectPlane = vec4(0, 1, 0, -waterLevel);
+            float sign = underwater ? -1.0f : 1.0f;
+            reflectPlane = vec4(0.0f, -1.0f, 0.0f, waterLevel) * sign;
             camera->reflectPlane = &reflectPlane;
             camera->setup(true);
 
         // render reflections frame
-            float sign = underwater ? -1.0f : 1.0f;
-            game->setClipParams(sign, waterLevel * sign);
-            game->renderView(TR::NO_ROOM, false, roomsCount, roomsList);
+            game->renderView(TR::NO_ROOM, false, false, roomsCount, roomsList);
         }
-
-        game->setClipParams(1.0f, NO_CLIP_PLANE);
 
         camera->reflectPlane = NULL;
         camera->setup(true);
@@ -998,10 +981,14 @@ struct WaterCache {
 
         mat4 mProj = GAPI::ortho(0.0f, float(tex->origWidth), 0.0f, float(tex->origHeight), 0.0f, 1.0f);
 
+    #ifdef _OS_WP8
+        mProj.unrot90();
+    #endif
+
         Core::active.shader->setParam(uViewProj, mProj);
         Core::active.shader->setParam(uMaterial, vec4(1.0f));
 
-        tex->bind(0);
+        tex->bind(sDiffuse);
         int w = tex->width;
         int h = tex->height;
 
@@ -1016,7 +1003,7 @@ struct WaterCache {
         vertices[2].light =
         vertices[3].light = ubyte4(255, 255, 255, 255);
 
-    #if defined(_GAPI_D3D9) || defined(_GAPI_GXM)
+    #if defined(_GAPI_D3D9) || defined(_GAPI_D3D11) || defined(_GAPI_GXM)
         flip = !flip;
     #endif
 
@@ -1038,6 +1025,8 @@ struct WaterCache {
         game->getMesh()->renderBuffer(indices, COUNT(indices), vertices, COUNT(vertices));
 
         Core::setDepthTest(true);
+
+        tex->unbind(sDiffuse);
     }
 
     #undef MAX_SURFACES

@@ -48,7 +48,10 @@ namespace Debug {
     }
 
     void begin() {
+    #ifndef FFP
         glActiveTexture(GL_TEXTURE0);
+        glUseProgram(0);
+    #endif
         glDisable(GL_TEXTURE_2D);
         glMatrixMode(GL_PROJECTION);
         glLoadMatrixf((GLfloat*)&Core::mProj);
@@ -59,7 +62,6 @@ namespace Debug {
         glLineWidth(3);
         glPointSize(32);
 
-        glUseProgram(0);
         Core::active.shader = NULL;
         Core::active.textures[0] = NULL;
         Core::validateRenderState();
@@ -206,8 +208,8 @@ namespace Debug {
             vec4 p = Core::mViewProj * vec4(pos, 1);
             if (p.w > 0) {
                 p.xyz() = p.xyz() * (1.0f / p.w);
-                p.y = -p.y;	
-                p.xyz() = (p.xyz() * 0.5f + vec3(0.5f)) * vec3(float(Core::width), float(Core::height), 1.0f);	
+                p.y = -p.y;
+                p.xyz() = (p.xyz() * 0.5f + vec3(0.5f)) * vec3(float(Core::width), float(Core::height), 1.0f);
                 text(vec2(p.x, p.y), color, str);
             }
         }
@@ -258,6 +260,8 @@ namespace Debug {
                 return TR_TYPE_NAMES[entity.type - TR2_TYPES_START + (TR::Entity::TR1_TYPE_MAX - TR1_TYPES_START) + 1];
             if (entity.type < TR::Entity::TR3_TYPE_MAX)
                 return TR_TYPE_NAMES[entity.type - TR3_TYPES_START + (TR::Entity::TR1_TYPE_MAX - TR1_TYPES_START) + (TR::Entity::TR2_TYPE_MAX - TR2_TYPES_START) + 2];
+            if (entity.type < TR::Entity::TR4_TYPE_MAX)
+                return TR_TYPE_NAMES[entity.type - TR4_TYPES_START + (TR::Entity::TR1_TYPE_MAX - TR1_TYPES_START) + (TR::Entity::TR2_TYPE_MAX - TR2_TYPES_START) + (TR::Entity::TR3_TYPE_MAX - TR3_TYPES_START) + 3];
 
             return "UNKNOWN";
         }
@@ -544,6 +548,9 @@ namespace Debug {
             for (int i = 0; i < level.roomsCount; i++)
                 for (int j = 0; j < level.rooms[i].lightsCount; j++) {
                     TR::Room::Light &l = level.rooms[i].lights[j];
+
+                    if (!level.rooms[i].flags.visible) continue;
+
                     vec3 p = vec3(float(l.x), float(l.y), float(l.z));
                     vec4 color = vec4(l.color.r, l.color.g, l.color.b, 255) * (1.0f / 255.0f);
 
@@ -622,7 +629,7 @@ namespace Debug {
                 Box box = controller->getBoundingBoxLocal();
                 Debug::Draw::box(matrix, box.min, box.max, bboxIntersect ? vec4(1, 0, 0, 1): vec4(1));
 
-                Sphere spheres[MAX_SPHERES];
+                Sphere spheres[MAX_JOINTS];
                 int count = controller->getSpheres(spheres);
 
                 for (int joint = 0; joint < count; joint++) {
@@ -639,13 +646,36 @@ namespace Debug {
             }
         }
 
-        void dumpSample(TR::Level *level, int index) {
+        void dumpPalette(TR::Level *level, int index)
+        {
             char buf[255];
-            sprintf(buf, "samples_PSX/%03d.wav", index);
+            sprintf(buf, "tiles_PC/%02d.pal", index);
+
             FILE *f = fopen(buf, "wb");
+            for (int i = 0; i < 256; i++) {
+                Color24 c = level->palette[i];
+                uint16 res = (c.r >> 3) | ((c.g >> 3) << 5) | ((c.b >> 3) << 10);
+                fwrite(&res, 2, 1, f);
+            }
+            fclose(f);
+        }
+
+        void dumpSample(TR::Level *level, int index, int id, int sample) {
+            char buf[255];
+            sprintf(buf, "samples_PSX/%03d_%d.wav", id, sample);
 
             if (level->version == TR::VER_TR1_PSX) {
                 uint32 dataSize = level->soundSize[index] / 16 * 28 * 2 * 4;
+                uint32 size = -1;
+
+                FILE *f = fopen(buf, "rb");
+                if (f) {
+                    fseek(f, 0, SEEK_END);
+                    size = ftell(f);
+                    fclose(f);
+                }
+
+                f = fopen(buf, "wb");
 
                 struct Header {
                     uint32 RIFF;
@@ -672,19 +702,30 @@ namespace Debug {
 
                 fwrite(&header, sizeof(header), 1, f);
 
-                Sound::VAG vag(new Stream(NULL, &level->soundData[level->soundOffsets[index]], dataSize));        
+                Sound::VAG vag(level->getSampleStream(index));        
                 Sound::Frame frames[4 * 28];
                 while (int count = vag.decode(frames, 4 * 28))
+                {
                     for (int i = 0; i < count; i++)
-                        fwrite(&frames[i].L, 2, 1, f);                
+                    {
+                        fwrite(&frames[i].L, 2, 1, f);
+                    }
+                }
+
+                dataSize = ftell(f);
+                if (size != -1 && size != dataSize) {
+                    LOG("audio diff %03d_%d : %d -> %d\n", id, sample, size, dataSize);
+                }
+
+                fclose(f);
             }
 
             if (level->version == TR::VER_TR1_PC) {
                 uint32 *data = (uint32*)&level->soundData[level->soundOffsets[index]];
+                FILE *f = fopen(buf, "wb");
                 fwrite(data, data[1] + 8, 1, f);
+                fclose(f);
             }
-
-            fclose(f);
         }
 
         void info(IGame *game, Controller *controller, Animation &anim) {
@@ -744,9 +785,9 @@ namespace Debug {
                 for (int i = 0; i < info.trigCmdCount; i++) {
                     TR::FloorData::TriggerCommand &cmd = info.trigCmd[i];
                     
-                    const char *ent = (cmd.action == TR::Action::ACTIVATE || cmd.action == TR::Action::CAMERA_TARGET) ? getEntityName(level, level.entities[cmd.args]) : "";
+                    const char *ent = (cmd.action == TR::Action::ACTIVATE || cmd.action == TR::Action::CAMERA_TARGET) ? (cmd.args < level.entitiesBaseCount ? getEntityName(level, level.entities[cmd.args]) : "BAD_ENTITY_INDEX") : "";
                     sprintf(buf, "%s -> %s (%d)", getTriggerAction(level, cmd.action), ent, cmd.args);
-                    if (cmd.action == TR::Action::CAMERA_SWITCH) {
+                    if (cmd.action == TR::Action::CAMERA_SWITCH || cmd.action == TR::Action::FLYBY || cmd.action == TR::Action::CUTSCENE) {
                         i++;
                         sprintf(buf, "%s delay: %d speed: %d", buf, int(info.trigCmd[i].timer), int(info.trigCmd[i].speed));
                     }

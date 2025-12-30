@@ -14,14 +14,6 @@
     #endif
 #endif
 
-//#define VR_SUPPORT
-// TODO: fix depth precision
-// TODO: fix water surface rendering
-// TODO: fix clipping
-// TODO: add MSAA support for render targets
-// TODO: add IK for arms
-// TODO: controls (WIP)
-
 // hint to the driver to use discrete GPU
 extern "C" {
 // NVIDIA
@@ -30,12 +22,9 @@ extern "C" {
     __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
 
-#ifdef VR_SUPPORT
-   #include "libs/openvr/openvr.h"
-#endif
-
 #include "game.h"
 
+#define GetProcAddr(lib, x) (x = lib ? (decltype(x))GetProcAddress(lib, #x + 1) : NULL)
 
 // multi-threading
 void* osMutexInit() {
@@ -60,14 +49,13 @@ void osMutexUnlock(void *obj) {
 // timing
 int osStartTime = 0;
 
-int osGetTime() {
+int osGetTimeMS() {
 #ifdef DEBUG
     LARGE_INTEGER Freq, Count;
     QueryPerformanceFrequency(&Freq);
     QueryPerformanceCounter(&Count);
     return int(Count.QuadPart * 1000L / Freq.QuadPart);
 #else
-    timeBeginPeriod(0);
     return int(timeGetTime()) - osStartTime;
 #endif
 }
@@ -79,11 +67,16 @@ InputKey keyToInputKey(int code) {
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        VK_NUMPAD0, VK_NUMPAD1, VK_NUMPAD2, VK_NUMPAD3, VK_NUMPAD4, VK_NUMPAD5, VK_NUMPAD6, VK_NUMPAD7, VK_NUMPAD8, VK_NUMPAD9, VK_ADD, VK_SUBTRACT, VK_MULTIPLY, VK_DIVIDE, VK_DECIMAL,
+        VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_F10, VK_F11, VK_F12,
+        VK_OEM_MINUS, VK_OEM_PLUS, VK_OEM_4, VK_OEM_6, VK_OEM_2, VK_OEM_5, VK_OEM_COMMA, VK_OEM_PERIOD, VK_OEM_3, VK_OEM_1, VK_OEM_7, VK_PRIOR, VK_NEXT, VK_HOME, VK_END, VK_DELETE, VK_INSERT, VK_BACK,
     };
 
-    for (int i = 0; i < sizeof(codes) / sizeof(codes[0]); i++)
-        if (codes[i] == code)
+    for (int i = 0; i < COUNT(codes); i++) {
+        if (codes[i] == code) {
             return (InputKey)(ikLeft + i);
+        }
+    }
     return ikNone;
 }
 
@@ -117,12 +110,10 @@ typedef struct _XINPUT_VIBRATION {
 #define XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE 8689
 #define XINPUT_GAMEPAD_TRIGGER_THRESHOLD    30
 
-DWORD (WINAPI *XInputGetState) (DWORD dwUserIndex, XINPUT_STATE* pState) = NULL;
-DWORD (WINAPI *XInputSetState) (DWORD dwUserIndex, XINPUT_VIBRATION* pVibration) = NULL;
-void  (WINAPI *XInputEnable)   (BOOL enable) = NULL;
-#define XInputGetProc(x) (x = (decltype(x))GetProcAddress(h, #x))
+DWORD (WINAPI *_XInputGetState) (DWORD dwUserIndex, XINPUT_STATE* pState);
+DWORD (WINAPI *_XInputSetState) (DWORD dwUserIndex, XINPUT_VIBRATION* pVibration);
+void  (WINAPI *_XInputEnable)   (BOOL enable);
 
-#define JOY_DEAD_ZONE_STICK      0.3f
 #define JOY_DEAD_ZONE_TRIGGER    0.01f
 #define JOY_MIN_UPDATE_FX_TIME   50
 
@@ -144,14 +135,14 @@ void osJoyVibrate(int index, float L, float R) {
 
 void joyRumble(int index) {
     JoyDevice &joy = joyDevice[index];
-    if (XInputSetState && joy.ready && (joy.vL != joy.oL || joy.vR != joy.oR) && osGetTime() >= joy.time) {
+    if (_XInputSetState && joy.ready && (joy.vL != joy.oL || joy.vR != joy.oR) && Core::getTime() >= joy.time) {
         XINPUT_VIBRATION vibration;
         vibration.wLeftMotorSpeed  = int(joy.vL * 65535.0f);
         vibration.wRightMotorSpeed = int(joy.vR * 65535.0f);
-        XInputSetState(index, &vibration);
+        _XInputSetState(index, &vibration);
         joy.oL = joy.vL;
         joy.oR = joy.vR;
-        joy.time = osGetTime() + JOY_MIN_UPDATE_FX_TIME;
+        joy.time = Core::getTime() + JOY_MIN_UPDATE_FX_TIME;
     }
 }
 
@@ -159,18 +150,18 @@ void joyInit() {
     memset(joyDevice, 0, sizeof(joyDevice));
 
     HMODULE h = LoadLibrary("xinput1_3.dll");
-    if (h == NULL)
+    if (h == NULL) {
         h = LoadLibrary("xinput9_1_0.dll");
+    }
 
-    XInputGetProc(XInputGetState);
-    XInputGetProc(XInputSetState);
-    XInputGetProc(XInputEnable);
+    GetProcAddr(h, _XInputGetState);
+    GetProcAddr(h, _XInputSetState);
+    GetProcAddr(h, _XInputEnable);
 
     for (int j = 0; j < INPUT_JOY_COUNT; j++) {
-        if (XInputGetState) { // XInput
+        if (_XInputGetState) { // XInput
             XINPUT_STATE state;
-            int res = XInputGetState(j, &state);
-            joyDevice[j].ready = (XInputGetState(j, &state) == ERROR_SUCCESS);
+            joyDevice[j].ready = (_XInputGetState(j, &state) == ERROR_SUCCESS);
         } else { // mmSystem (legacy)
             JOYINFOEX info;
             info.dwSize  = sizeof(info);
@@ -195,13 +186,8 @@ float joyAxis(int x, int xMin, int xMax) {
 vec2 joyDir(float ax, float ay) {
     vec2 dir = vec2(ax, ay);
     float dist = min(1.0f, dir.length());
-    if (dist < JOY_DEAD_ZONE_STICK) dist = 0.0f;
 
     return dir.normal() * dist;
-}
-
-int joyDeadZone(int value, int zone) {
-    return (value < -zone || value > zone) ? value : 0;
 }
 
 void joyUpdate() {
@@ -210,17 +196,17 @@ void joyUpdate() {
 
         joyRumble(j);
 
-        if (XInputGetState) { // XInput
+        if (_XInputGetState) { // XInput
             XINPUT_STATE state;
-            if (XInputGetState(j, &state) == ERROR_SUCCESS) {
+            if (_XInputGetState(j, &state) == ERROR_SUCCESS) {
                 //osJoyVibrate(j, state.Gamepad.bLeftTrigger / 255.0f, state.Gamepad.bRightTrigger / 255.0f); // vibration test
 
-                Input::setJoyPos(j, jkL,   joyDir(joyAxis(joyDeadZone( state.Gamepad.sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE),  -32768, 32767),
-                                                  joyAxis(joyDeadZone(-state.Gamepad.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE),  -32768, 32767)));
-                Input::setJoyPos(j, jkR,   joyDir(joyAxis(joyDeadZone( state.Gamepad.sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE), -32768, 32767),
-                                                  joyAxis(joyDeadZone(-state.Gamepad.sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE), -32768, 32767)));
-                Input::setJoyPos(j, jkLT,  vec2(joyDeadZone(state.Gamepad.bLeftTrigger,  XINPUT_GAMEPAD_TRIGGER_THRESHOLD) / 255.0f, 0.0f));
-                Input::setJoyPos(j, jkRT,  vec2(joyDeadZone(state.Gamepad.bRightTrigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD) / 255.0f, 0.0f));
+                Input::setJoyPos(j, jkL,   joyDir(joyAxis( state.Gamepad.sThumbLX, -32768, 32767),
+                                                  joyAxis(-state.Gamepad.sThumbLY, -32768, 32767)));
+                Input::setJoyPos(j, jkR,   joyDir(joyAxis( state.Gamepad.sThumbRX, -32768, 32767),
+                                                  joyAxis(-state.Gamepad.sThumbRY, -32768, 32767)));
+                Input::setJoyPos(j, jkLT,  vec2(state.Gamepad.bLeftTrigger / 255.0f, 0.0f));
+                Input::setJoyPos(j, jkRT,  vec2(state.Gamepad.bRightTrigger/ 255.0f, 0.0f));
 
                 static const JoyKey keys[] = { jkUp, jkDown, jkLeft, jkRight, jkStart, jkSelect, jkL, jkR, jkLB, jkRB, jkNone, jkNone, jkA, jkB, jkX, jkY };
                 for (int i = 0; i < 16; i++)
@@ -276,22 +262,26 @@ void joyUpdate() {
     }
 }
 
+#ifndef NO_TOUCH_SUPPORT
 // touch
-BOOL (WINAPI *RegisterTouchWindowX)(HWND, ULONG);
-BOOL (WINAPI *GetTouchInputInfoX)(HTOUCHINPUT, UINT, PTOUCHINPUT, int);
-BOOL (WINAPI *CloseTouchInputHandleX)(HTOUCHINPUT);
+BOOL (WINAPI *_RegisterTouchWindow)(HWND, ULONG);
+BOOL (WINAPI *_GetTouchInputInfo)(HTOUCHINPUT, UINT, PTOUCHINPUT, int);
+BOOL (WINAPI *_CloseTouchInputHandle)(HTOUCHINPUT);
 
-#define MAX_TOUCH_COUNT 6
+#ifndef MAX_TOUCH_COUNT
+    #define MAX_TOUCH_COUNT 6
+#endif
 
 void touchInit(HWND hWnd) {
     int value = GetSystemMetrics(SM_DIGITIZER);
     if (value) {
         HMODULE hUser32 = LoadLibrary("user32.dll");
-        RegisterTouchWindowX     = (decltype(RegisterTouchWindowX))   GetProcAddress(hUser32, "RegisterTouchWindow");
-        GetTouchInputInfoX       = (decltype(GetTouchInputInfoX))     GetProcAddress(hUser32, "GetTouchInputInfo");
-        CloseTouchInputHandleX   = (decltype(CloseTouchInputHandleX)) GetProcAddress(hUser32, "CloseTouchInputHandle");
-        if (RegisterTouchWindowX && GetTouchInputInfoX && CloseTouchInputHandleX)
-            RegisterTouchWindowX(hWnd, 0);
+        GetProcAddr(hUser32, _RegisterTouchWindow);
+        GetProcAddr(hUser32, _GetTouchInputInfo);
+        GetProcAddr(hUser32, _CloseTouchInputHandle);
+
+        if (_RegisterTouchWindow && _GetTouchInputInfo && _CloseTouchInputHandle)
+            _RegisterTouchWindow(hWnd, 0);
     }
 }
 
@@ -299,7 +289,7 @@ void touchUpdate(HWND hWnd, HTOUCHINPUT hTouch, int count) {
     TOUCHINPUT touch[MAX_TOUCH_COUNT];
     count = min(count, MAX_TOUCH_COUNT);
 
-    if (!GetTouchInputInfoX(hTouch, count, touch, sizeof(TOUCHINPUT)))
+    if (!_GetTouchInputInfo(hTouch, count, touch, sizeof(TOUCHINPUT)))
         return;
 
     for (int i = 0; i < count; i++) {
@@ -313,19 +303,22 @@ void touchUpdate(HWND hWnd, HTOUCHINPUT hTouch, int count) {
             Input::setDown(key, (touch[i].dwFlags & TOUCHEVENTF_DOWN) != 0);
     }
 
-    CloseTouchInputHandleX(hTouch);
+    _CloseTouchInputHandle(hTouch);
 }
+#else
+void touchInit(HWND hWnd) {};
+#endif
 
 // sound
-#define SND_SIZE 4704*2
+#define SND_SIZE (2352*3*2)
 
 bool sndReady;
 char *sndData;
 HWAVEOUT waveOut;
 WAVEFORMATEX waveFmt = { WAVE_FORMAT_PCM, 2, 44100, 44100 * 4, 4, 16, sizeof(waveFmt) };
 WAVEHDR waveBuf[2];
-HANDLE  sndThread;
-HANDLE  sndSema;
+HANDLE sndThread;
+HANDLE sndSema;
 
 void sndFree() {
     if (!sndReady) return;
@@ -384,15 +377,42 @@ void sndInit(HWND hwnd) {
     }
 }
 
+// DPI api
+BOOL (WINAPI *_SetProcessDpiAwarenessContext)(HANDLE);  // Win 10
+BOOL (WINAPI *_SetProcessDpiAwareness)(int);            // Win 8.1
+BOOL (WINAPI *_SetProcessDPIAware)();                   // Win Vista
+BOOL (WINAPI *_EnableNonClientDpiScaling)(HWND);        // Win 10
+
 HWND hWnd;
 
-#ifdef _GAPI_GL
+#ifdef _GAPI_SW
+    HDC    hDC;
+
+    void ContextCreate() {
+        hDC = GetDC(hWnd);
+    }
+
+    void ContextDelete() {
+        ReleaseDC(hWnd, hDC);
+        delete[] GAPI::swColor;
+    }
+
+    void ContextResize() {
+        delete[] GAPI::swColor;
+        GAPI::swColor = new GAPI::ColorSW[Core::width * Core::height];
+
+        GAPI::resize();
+    }
+
+    void ContextSwap() {
+        const BITMAPINFO bmi = { sizeof(BITMAPINFOHEADER), Core::width, -Core::height, 1, sizeof(GAPI::ColorSW) * 8, BI_RGB, 0, 0, 0, 0, 0 };
+        SetDIBitsToDevice(hDC, 0, 0, Core::width, Core::height, 0, 0, 0, Core::height, GAPI::swColor, &bmi, DIB_RGB_COLORS);
+    }
+#elif _GAPI_GL
     HDC   hDC;
     HGLRC hRC;
 
     void ContextCreate() {
-        hDC = GetDC(hWnd);
-
         PIXELFORMATDESCRIPTOR pfd;
         memset(&pfd, 0, sizeof(pfd));
         pfd.nSize        = sizeof(pfd);
@@ -404,11 +424,67 @@ HWND hWnd;
         pfd.cBlueBits    = 8;
         pfd.cAlphaBits   = 8;
         pfd.cDepthBits   = 24;
-        pfd.cStencilBits = 8;
 
-        int format = ChoosePixelFormat(hDC, &pfd);
-        SetPixelFormat(hDC, format, &pfd);
-        hRC = wglCreateContext(hDC);
+        PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
+        PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
+
+        {
+            HWND fWnd = CreateWindow("static", NULL, WS_POPUP, 0, 0, 0, 0, 0, 0, 0, 0);
+            HDC fDC = GetDC(fWnd);
+
+            int format = ChoosePixelFormat(fDC, &pfd);
+            SetPixelFormat(fDC, format, &pfd);
+            HGLRC fRC = wglCreateContext(fDC);
+            wglMakeCurrent(fDC, fRC);
+
+            wglChoosePixelFormatARB    = GetProcOGL(wglChoosePixelFormatARB);
+            wglCreateContextAttribsARB = GetProcOGL(wglCreateContextAttribsARB);
+
+            wglMakeCurrent(0, 0);
+            ReleaseDC(fWnd, fDC);
+            wglDeleteContext(fRC);
+            DestroyWindow(fWnd);
+        }
+
+        hDC = GetDC(hWnd);
+
+        if (wglChoosePixelFormatARB && wglCreateContextAttribsARB) {
+            const int pixelAttribs[] = {
+                WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+                WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+                WGL_DOUBLE_BUFFER_ARB,  GL_TRUE,
+                WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_ARB,
+                WGL_ACCELERATION_ARB,   WGL_FULL_ACCELERATION_ARB,
+                WGL_COLOR_BITS_ARB,     32,
+                WGL_ALPHA_BITS_ARB,     8,
+                WGL_DEPTH_BITS_ARB,     24,
+                0
+            };
+
+            int format;
+            UINT numFormats;
+            bool status = wglChoosePixelFormatARB(hDC, pixelAttribs, NULL, 1, &format, &numFormats);
+            ASSERT(status && numFormats > 0);
+
+            DescribePixelFormat(hDC, format, sizeof(pfd), &pfd);
+            SetPixelFormat(hDC, format, &pfd);
+
+            int contextAttribs[] = {
+                WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+                WGL_CONTEXT_MINOR_VERSION_ARB, 2,
+                WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+                0
+            };
+
+            hRC = wglCreateContextAttribsARB(hDC, 0, contextAttribs);
+
+            GAPI::GL_VER_3 = true;
+        } else {
+            int format = ChoosePixelFormat(hDC, &pfd);
+            SetPixelFormat(hDC, format, &pfd);
+            hRC = wglCreateContext(hDC);
+        }
+
         wglMakeCurrent(hDC, hRC);
     }
 
@@ -421,9 +497,10 @@ HWND hWnd;
     void ContextResize() {}
 
     void ContextSwap() {
+        timeBeginPeriod(1); // fix for Intel HD Graphics 4000 OGL driver bug in SwapBuffers timing
         SwapBuffers(hDC);
     }
-#else
+#elif _GAPI_D3D9
     LPDIRECT3D9           D3D;
     LPDIRECT3DDEVICE9     device;
     D3DPRESENT_PARAMETERS d3dpp;
@@ -466,6 +543,59 @@ HWND hWnd;
         if (device->Present(NULL, NULL, NULL, NULL) == D3DERR_DEVICELOST)
             GAPI::resetDevice();
     }
+#elif _GAPI_D3D11
+    ID3D11Device        *osDevice;
+    ID3D11DeviceContext *osContext;
+    IDXGISwapChain      *osSwapChain;
+
+    void ContextCreate() {
+        DXGI_SWAP_CHAIN_DESC desc = { 0 };
+        desc.BufferCount          = 2;
+        desc.BufferDesc.Format    = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.BufferDesc.RefreshRate.Numerator   = 60;
+        desc.BufferDesc.RefreshRate.Denominator = 1;
+        desc.BufferUsage          = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        desc.OutputWindow         = hWnd;
+        desc.SampleDesc.Count     = 1;
+        desc.SampleDesc.Quality   = 0;
+        desc.Windowed             = TRUE;
+        desc.OutputWindow         = hWnd;
+
+        D3D_FEATURE_LEVEL featureLevels[] = {
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_10_1,
+            D3D_FEATURE_LEVEL_10_0,
+        };
+
+        HRESULT ret;
+
+        ret = D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_DEBUG, featureLevels, ARRAYSIZE(featureLevels), D3D11_SDK_VERSION, &desc, &osSwapChain, &osDevice, NULL, &osContext);
+        ASSERT(ret == S_OK);
+
+        GAPI::defRTV = NULL;
+        GAPI::defDSV = NULL;
+    }
+
+    void ContextDelete() {
+        GAPI::deinit();
+        SAFE_RELEASE(osSwapChain);
+        SAFE_RELEASE(osContext);
+        SAFE_RELEASE(osDevice);
+    }
+
+    void ContextResize() {
+        if (osSwapChain == NULL || Core::width <= 0 || Core::height <= 0)
+            return;
+
+        GAPI::resetDevice();
+
+        HRESULT ret = osSwapChain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
+        ASSERT(ret == S_OK);
+    }
+
+    void ContextSwap() {
+        HRESULT ret = osSwapChain->Present(Core::settings.detail.vsync ? 1 : 0, 0);
+    }
 #endif
 
 #ifdef _NAPI_SOCKET
@@ -504,6 +634,12 @@ int checkLanguage() {
         case LANG_UKRAINIAN  :
         case LANG_BELARUSIAN : str = STR_LANG_RU; break;
         case LANG_JAPANESE   : str = STR_LANG_JA; break;
+        case LANG_GREEK      : str = STR_LANG_GR; break;
+        case LANG_FINNISH    : str = STR_LANG_FI; break;
+        case LANG_CZECH      : str = STR_LANG_CZ; break;
+        case LANG_CHINESE    : str = STR_LANG_CN; break;
+        case LANG_HUNGARIAN  : str = STR_LANG_HU; break;
+        case LANG_SWEDISH    : str = STR_LANG_SV; break;
     }
     return str - STR_LANG_EN;
 }
@@ -512,8 +648,9 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
     switch (msg) {
         // window
         case WM_ACTIVATE :
-            if (XInputEnable)
-                XInputEnable(wParam != WA_INACTIVE);
+            if (_XInputEnable) {
+                _XInputEnable(wParam != WA_INACTIVE);
+            }
             Input::reset();
             break;
         case WM_SIZE:
@@ -598,14 +735,22 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             joyFree();
             joyInit();
             return 1;
+    #ifndef NO_TOUCH_SUPPORT
         // touch
         case WM_TOUCH :
             touchUpdate(hWnd, (HTOUCHINPUT)lParam, wParam);
             break;
+    #endif
         // sound
         case MM_WOM_DONE :
             sndFill((HWAVEOUT)wParam, (WAVEHDR*)lParam);
             break;
+        case WM_NCCREATE:
+            // allow windows to properly scale non-client area based on per-monitor dpi
+            if (_EnableNonClientDpiScaling != NULL) {
+                _EnableNonClientDpiScaling(hWnd);
+            }
+            // we have to pass this message to default wnd proc
         default :
             return DefWindowProc(hWnd, msg, wParam, lParam);
     }
@@ -614,6 +759,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
 //VR Support
 #ifdef VR_SUPPORT
+// TODO: fix depth precision
+// TODO: fix water surface rendering
+// TODO: fix clipping
+// TODO: add MSAA support for render targets
+// TODO: add IK for arms
+// TODO: controls (WIP)
+
+#include "libs/openvr/openvr.h"
+
 vr::IVRSystem *hmd; // vrContext
 vr::IVRRenderModels* rm; // not currently in use
 vr::TrackedDevicePose_t tPose[vr::k_unMaxTrackedDeviceCount];
@@ -647,6 +801,8 @@ vr::VRActionHandle_t VRcDash = vr::k_ulInvalidActionHandle;
 vr::VRActionSetHandle_t m_actionsetTR = vr::k_ulInvalidActionSetHandle;
 
 void vrInit() {
+    vr::VR_InitLibrary("openvr_api.dll");
+
     vr::EVRInitError eError = vr::VRInitError_None;
     hmd = vr::VR_Init(&eError, vr::VRApplication_Scene);
     //rm = vr::VRRenderModels(); // initialize render models interface
@@ -662,42 +818,24 @@ void vrInit() {
         LOG("! compositor initialization failed\n");
         return;
     }
-
-    //set manifest
-    vr::VRInput()->SetActionManifestPath("C:/Users/Austin/Desktop/OpenLaraGitTest2/OpenLara/bin/TombRaidervr_actions.json"); // needs absolutepath
-        // get action handles
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Left",      &VRcLeft);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Right",     &VRcRight);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Up",        &VRcUp);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Down",      &VRcDown);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Jump",      &VRcJump);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Walk",      &VRcWalk);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Action",    &VRcAction);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Weapon",    &VRcWeapon);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Roll",      &VRcRoll);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Inventory", &VRcInventory);
-    vr::VRInput()->GetActionHandle("/actions/demo/in/Start",     &VRcStart);
-    //get actionsethandle
-    vr::VRInput()->GetActionSetHandle("/actions/demo",           &m_actionsetDemo);
-    //get input source handles
-    vr::VRInput()->GetInputSourceHandle("/user/hand/left",       &m_leftHand);
-    vr::VRInput()->GetInputSourceHandle("/user/hand/right",      &m_rightHand);
-    // aren't using right now
-    //vr::VRInput()->GetActionHandle("/actions/demo/in/TriggerHaptic", &m_actionTriggerHaptic);
-    //vr::VRInput()->GetActionHandle("/actions/demo/in/AnalogInput", &m_actionAnalongInput);
 }
 
 void vrInitTargets() {
     if (!hmd) return;
     uint32_t width, height;
     hmd->GetRecommendedRenderTargetSize(&width, &height);
-    Core::eyeTex[0] = new Texture(width, height, 1, TexFormat::FMT_RGBA);
-    Core::eyeTex[1] = new Texture(width, height, 1, TexFormat::FMT_RGBA);
+    Core::eyeTex[0] = new Texture(width, height, 1, TexFormat::FMT_RGBA, OPT_TARGET);
+    Core::eyeTex[1] = new Texture(width, height, 1, TexFormat::FMT_RGBA, OPT_TARGET);
 }
 
 void vrFree() {
     if (!hmd) return;
     vr::VR_Shutdown();
+    hmd = NULL;
+    Input::hmd.ready = false;
+    delete Core::eyeTex[0];
+    delete Core::eyeTex[1];
+    Core::eyeTex[0] = Core::eyeTex[1] = NULL;
 }
 
 mat4 convToMat4(const vr::HmdMatrix44_t &m) {
@@ -730,76 +868,92 @@ bool GetDigitalActionState(vr::VRActionHandle_t action, vr::VRInputValueHandle_t
     return actionData.bActive && actionData.bState;
 }
 
-
-void ProcessVREvent(const vr::VREvent_t &event) {
-    char buffer[1024] = "test";
-    switch (event.eventType) {
-    case vr::VREvent_TrackedDeviceActivated:
-        //SetupRenderModelForTrackedDevice( event.trackedDeviceIndex );
-        vr::RenderModel_t ** controllerRender;
-        hmd->GetStringTrackedDeviceProperty(event.trackedDeviceIndex, vr::ETrackedDeviceProperty::Prop_RenderModelName_String, buffer, 1024); // can be filled with an error,but I can't find the right type
-        //rm->LoadRenderModel_Async(buffer, controllerRender);
-        // need to process render model?
-        LOG("Device %u attached. Setting up render model\n", event.trackedDeviceIndex);
-        break;
-    case vr::VREvent_TrackedDeviceDeactivated:
-        LOG("Device %u detached.\n", event.trackedDeviceIndex);
-        Input::reset();
-        break;
-    case vr::VREvent_TrackedDeviceUpdated: //not sure what to do here
-        LOG("Device %u updated.\n", event.trackedDeviceIndex);
-        break;
-    }
-}
-
-void vrUpdateInput() {
+void vrUpdate() {
     if (!hmd) return;
+
     vr::VREvent_t event;
 
     while (hmd->PollNextEvent(&event, sizeof(event))) {
-        ProcessVREvent(event);
+        switch (event.eventType) {
+            case vr::VREvent_TrackedDeviceActivated:
+                break;
+            case vr::VREvent_TrackedDeviceDeactivated:
+                Input::reset();
+                break;
+            case vr::VREvent_TrackedDeviceUpdated:
+                break;
+        }
     }
 
-    vr::VRActiveActionSet_t actionSet = { 0 };
-    actionSet.ulActionSet = m_actionsetDemo;
-    vr::VRInput()->UpdateActionState(&actionSet, sizeof(actionSet), 1);
-
-    Input::hmd.state[cUp]        = GetDigitalActionState(VRcUp);
-    Input::hmd.state[cDown]      = GetDigitalActionState(VRcDown);
-    Input::hmd.state[cRight]     = GetDigitalActionState(VRcRight);
-    Input::hmd.state[cLeft]      = GetDigitalActionState(VRcLeft);
-    Input::hmd.state[cJump]      = GetDigitalActionState(VRcJump);
-    Input::hmd.state[cWalk]      = GetDigitalActionState(VRcWalk);
-    Input::hmd.state[cAction]    = GetDigitalActionState(VRcAction);
-    Input::hmd.state[cWeapon]    = GetDigitalActionState(VRcWeapon);
-    Input::hmd.state[cRoll]      = GetDigitalActionState(VRcRoll);
-    Input::hmd.state[cStart]     = GetDigitalActionState(VRcStart);
-    Input::hmd.state[cInventory] = GetDigitalActionState(VRcInventory);
-}
-
-void vrUpdateView() {
-    if (!hmd) return;
     vr::VRCompositor()->WaitGetPoses(tPose, vr::k_unMaxTrackedDeviceCount, NULL, 0);
 
-    if (!tPose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
-        return;
+    for (int id = 0; id < vr::k_unMaxTrackedDeviceCount; id++) {
+        vr::TrackedDevicePose_t &pose = tPose[id];
 
-    mat4 pL = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Left,  8.0f, 45.0f * 1024.0f));
-    mat4 pR = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Right, 8.0f, 45.0f * 1024.0f));
+        if (!pose.bPoseIsValid) {
+            continue;
+        }
 
-    mat4 head = convToMat4(tPose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking);
-    if (Input::hmd.zero.x == INF)
-        Input::hmd.zero = head.getPos();
-    head.setPos(head.getPos() - Input::hmd.zero);
+        switch (hmd->GetTrackedDeviceClass(id)) {
+            case vr::TrackedDeviceClass_HMD : {
+                mat4 pL = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Left,  8.0f, 45.0f * 1024.0f));
+                mat4 pR = convToMat4(hmd->GetProjectionMatrix(vr::Eye_Right, 8.0f, 45.0f * 1024.0f));
 
-    mat4 vL = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Left));
-    mat4 vR = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Right));
+                mat4 head = convToMat4(pose.mDeviceToAbsoluteTracking);
+                if (Input::hmd.zero.x == INF) {
+                    Input::hmd.zero = head.getPos();
+                }
+                head.setPos(head.getPos() - Input::hmd.zero);
 
-    vL.setPos(vL.getPos() * ONE_METER);
-    vR.setPos(vR.getPos() * ONE_METER);
-    Input::hmd.setView(pL, pR, vL, vR);
+                mat4 vL = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Left));
+                mat4 vR = head * convToMat4(hmd->GetEyeToHeadTransform(vr::Eye_Right));
 
-    Input::hmd.head = head;
+                vL.setPos(vL.getPos() * ONE_METER);
+                vR.setPos(vR.getPos() * ONE_METER);
+                Input::hmd.setView(pL, pR, vL, vR);
+
+                Input::hmd.head = head;
+                break;
+            }
+            case vr::TrackedDeviceClass_Controller : {
+                vr::VRControllerState_t state;
+                hmd->GetControllerState(id, &state, sizeof(state));
+
+                #define IS_DOWN(btn) ((state.ulButtonPressed & vr::ButtonMaskFromId(btn)) != 0)
+
+                if (!state.ulButtonPressed) {
+                 //   continue;
+                }
+
+                Input::setJoyDown(0, jkLeft,  IS_DOWN(vr::k_EButton_DPad_Left));
+                Input::setJoyDown(0, jkUp,    IS_DOWN(vr::k_EButton_DPad_Up));
+                Input::setJoyDown(0, jkRight, IS_DOWN(vr::k_EButton_DPad_Right));
+                Input::setJoyDown(0, jkDown,  IS_DOWN(vr::k_EButton_DPad_Down));
+
+                if (IS_DOWN(vr::k_EButton_Axis0)) {
+                     Input::setJoyPos(0, jkL, vec2(state.rAxis[0].x, -state.rAxis[0].y));
+                }
+
+                Input::setJoyDown(0, jkA, IS_DOWN(vr::k_EButton_Axis1) ? (state.rAxis[1].x > 0.5) : false);
+                Input::setJoyDown(0, jkY, IS_DOWN(vr::k_EButton_Grip));
+                Input::setJoyDown(0, jkX, IS_DOWN(vr::k_EButton_ApplicationMenu));
+
+                // TODO
+                switch (hmd->GetControllerRoleForTrackedDeviceIndex(id)) {
+                    case vr::TrackedControllerRole_LeftHand :
+                        // TODO
+                        break;
+                    case vr::TrackedControllerRole_RightHand :
+                        // TODO
+                        break;
+                    default : ;
+                }
+                break;
+
+                #undef IS_DOWN
+            }
+        }
+    }
 }
 
 void vrCompose() {
@@ -809,6 +963,25 @@ void vrCompose() {
     vr::Texture_t RTex = {(void*)(uintptr_t)Core::eyeTex[1]->ID, vr::TextureType_OpenGL, vr::ColorSpace_Gamma};
     vr::VRCompositor()->Submit(vr::Eye_Right, &RTex);
 }
+
+void osToggleVR(bool enable) {
+    if (enable) {
+        vrInit();
+        vrInitTargets();
+        Input::hmd.ready = hmd != NULL;
+        if (!hmd) {
+            Core::settings.detail.stereo = Core::Settings::STEREO_OFF;
+        }
+    } else {
+        vrFree();
+    }
+}
+
+#else
+
+void vrUpdate() {}
+void vrCompose() {}
+
 #endif // #ifdef VR_SUPPORT
 
 #ifdef _DEBUG
@@ -823,7 +996,7 @@ int main(int argc, char** argv) {
 #else
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     int argc = (lpCmdLine && strlen(lpCmdLine)) ? 2 : 1;
-    char *argv[] = { "", lpCmdLine };
+    const char *argv[] = { "", lpCmdLine };
 #endif
     cacheDir[0] = saveDir[0] = contentDir[0] = 0;
 
@@ -833,12 +1006,20 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     CreateDirectory(cacheDir, NULL);
 
     RECT r = { 0, 0, 1280, 720 };
+
+    int sw = GetSystemMetrics(SM_CXSCREEN);
+    int sh = GetSystemMetrics(SM_CYSCREEN);
+    if (sw <= r.right + 128 || sh <= r.bottom + 128) {
+        r.right  /= 2;
+        r.bottom /= 2;
+    }
+
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, false);
 
 #ifndef _DEBUG
     {
-        int ox = (GetSystemMetrics(SM_CXSCREEN) - (r.right - r.left)) / 2;
-        int oy = (GetSystemMetrics(SM_CYSCREEN) - (r.bottom - r.top)) / 2;
+        int ox = (sw - (r.right - r.left)) / 2;
+        int oy = (sh - (r.bottom - r.top)) / 2;
         r.left   += ox;
         r.top    += oy;
         r.right  += ox;
@@ -850,18 +1031,54 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     r.left = r.top = 0;
 #endif
 
-    hWnd = CreateWindow("static", "OpenLara", WS_OVERLAPPEDWINDOW, r.left, r.top, r.right - r.left, r.bottom - r.top, 0, 0, 0, 0);
-    SendMessage(hWnd, WM_SETICON, 1, (LPARAM)LoadIcon(GetModuleHandle(NULL), "MAINICON"));
+    // set our process to be DPI aware before creating main window
+
+    bool high_dpi = false;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--high-dpi") == 0) {
+            high_dpi = true;
+        }
+    }
+
+    HMODULE hUser32 = NULL, hShcore = NULL;
+    
+    if (high_dpi) {
+        hUser32 = LoadLibrary("User32.dll");
+        hShcore = LoadLibrary("Shcore.dll");
+    }
+
+    GetProcAddr(hUser32, _SetProcessDpiAwarenessContext);
+    GetProcAddr(hShcore, _SetProcessDpiAwareness);
+    GetProcAddr(hUser32, _SetProcessDPIAware);
+    GetProcAddr(hUser32, _EnableNonClientDpiScaling);
+
+    if (_SetProcessDpiAwarenessContext) {
+        _SetProcessDpiAwarenessContext((HANDLE)-3);   // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE v1
+    } else if (_SetProcessDpiAwareness) {
+        _SetProcessDpiAwareness(2);                   // DPI_AWARENESS_PER_MONITOR_AWARE
+    } else if (_SetProcessDPIAware) {
+        _SetProcessDPIAware();
+    }
+
+    WNDCLASSEX wcex;
+    memset(&wcex, 0, sizeof(wcex));
+    wcex.cbSize         = sizeof(WNDCLASSEX);
+    wcex.style          = CS_HREDRAW | CS_VREDRAW;
+    wcex.hInstance      = GetModuleHandle(NULL);
+    wcex.hIcon          = LoadIcon(wcex.hInstance, "MAINICON");
+    wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
+    wcex.lpszClassName  = "OpenLaraWnd";
+    wcex.hIconSm        = wcex.hIcon;
+    wcex.lpfnWndProc    = &WndProc;
+    RegisterClassEx(&wcex);
+
+    hWnd = CreateWindow(wcex.lpszClassName, "OpenLara", WS_OVERLAPPEDWINDOW, r.left, r.top, r.right - r.left, r.bottom - r.top, 0, 0, 0, 0);
 
     ContextCreate();
 
-#ifdef VR_SUPPORT
-    vrInit();
-#endif
-
     Sound::channelsCount = 0;
 
-    osStartTime = osGetTime();
+    osStartTime = Core::getTime();
 
     touchInit(hWnd);
     joyInit();
@@ -869,14 +1086,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
     Core::defLang = checkLanguage();
 
-    Game::init(argc > 1 ? argv[1] : NULL);
-
-#ifdef VR_SUPPORT
-    Input::hmd.ready = hmd != NULL;
-    vrInitTargets();
-#endif
-
-    SetWindowLong(hWnd, GWL_WNDPROC, (LONG)&WndProc);
+    Game::init((argc > 1 && strstr(argv[1], "--") != argv[1]) ? argv[1] : NULL);
 
     if (Core::isQuit) {
         MessageBoxA(hWnd, "Please check the readme file first!", "Game resources not found", MB_ICONHAND);
@@ -894,17 +1104,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
                 Core::quit();
         } else {
             joyUpdate();
-        #ifdef VR_SUPPORT
-            vrUpdateInput();
-        #endif
+            vrUpdate();
             if (Game::update()) {
-            #ifdef VR_SUPPORT
-                vrUpdateView();
-            #endif
                 Game::render();
-            #ifdef VR_SUPPORT
                 vrCompose();
-            #endif
                 Core::waitVBlank();
                 ContextSwap();
             }

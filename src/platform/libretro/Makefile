@@ -42,6 +42,8 @@ ifeq ($(platform), unix)
    SHARED := -shared -Wl,--version-script=link.T -Wl,--no-undefined
    GL_LIB := -lGL
    LIBS += -lpthread
+   CFLAGS += -D_GNU_SOURCE
+   CXXFLAGS += -D_GNU_SOURCE
 else ifneq (,$(findstring osx,$(platform)))
    TARGET := $(TARGET_NAME)_libretro.dylib
    fpic := -fPIC
@@ -146,6 +148,14 @@ else
    CFLAGS += -I..
 endif
 
+# webOS
+ifneq (,$(or $(findstring webos,$(CROSS_COMPILE)),$(findstring starfish,$(CROSS_COMPILE))))
+   GL_LIB =
+   GLES = 1
+   CFLAGS += -DWEBOS
+   CXXFLAGS += -DWEBOS
+endif
+
 ifeq ($(DEBUG), 1)
    CXXFLAGS += -O0 -g
    CFLAGS += -O0 -g
@@ -179,16 +189,19 @@ CFLAGS   += $(INCFLAGS) $(FLAGS)
 CXXFLAGS += $(INCFLAGS) $(FLAGS)
 
 ifeq ($(GLES), 1)
-   CXXFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
-   CFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
+   CXXFLAGS += -DHAVE_OPENGLES
+   CFLAGS += -DHAVE_OPENGLES
    CXXFLAGS += -D__LIBRETRO_GLES__
    CFLAGS += -D__LIBRETRO_GLES__
    ifeq ($(GLES31), 1)
-      CXXFLAGS += -DHAVE_OPENGLES3 -DHAVE_OPENGLES_3_1
-      CFLAGS += -DHAVE_OPENGLES3 -DHAVE_OPENGLES_3_1
+      CXXFLAGS += -DHAVE_OPENGLES3 -DHAVE_OPENGLES_3_1 -D_GAPI_GLES
+      CFLAGS += -DHAVE_OPENGLES3 -DHAVE_OPENGLES_3_1 -D_GAPI_GLES
    else ifeq ($(GLES3), 1)
-      CXXFLAGS += -DHAVE_OPENGLES3
-      CFLAGS += -DHAVE_OPENGLES3
+      CXXFLAGS += -DHAVE_OPENGLES3 -D_GAPI_GLES
+      CFLAGS += -DHAVE_OPENGLES3 -D_GAPI_GLES
+   else
+      CXXFLAGS += -DHAVE_OPENGLES2 -D_GAPI_GLES2
+      CFLAGS += -DHAVE_OPENGLES2 -D_GAPI_GLES2
    endif
    LIBS += -lGLESv2 # Still link against GLESv2 when using GLES3 API, at least on desktop Linux.
    LIBS += -lEGL

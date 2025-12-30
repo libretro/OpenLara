@@ -1,6 +1,6 @@
 #include "common.hlsl"
 
-// ALPHA_TEST, UNDERWATER, OPT_CAUSTICS, CLIP_PLANE (D3D9 only)
+// ALPHA_TEST, UNDERWATER, OPT_CAUSTICS
 
 struct VS_OUTPUT {
 	float4 pos      : POSITION;
@@ -9,11 +9,6 @@ struct VS_OUTPUT {
 	float4 normal   : TEXCOORD2;
 	float4 diffuse  : TEXCOORD3;
 	float4 light    : TEXCOORD4;
-#ifdef _GAPI_GXM
-	float clipDist  : CLP0;
-#else
-	float clipDist  : TEXCOORD5;
-#endif
 };
 
 #ifdef VERTEX
@@ -24,7 +19,7 @@ VS_OUTPUT main(VS_INPUT In) {
 	float4 rBasisRot = uBasis[0];
 	float4 rBasisPos = uBasis[1];
 
-	Out.texCoord = In.aTexCoord * (1.0 / 32767.0);
+	Out.texCoord = In.aTexCoord * INV_SHORT_HALF;
 
 	Out.coord = mulBasis(rBasisRot, rBasisPos.xyz + In.aCoord.xyz, float3(In.aTexCoord.z, In.aTexCoord.w, 0.0));
 
@@ -62,35 +57,23 @@ VS_OUTPUT main(VS_INPUT In) {
 	Out.diffuse *= uMaterial.w;
 	Out.diffuse *= In.aLight.a;
 
-	Out.pos = mul(uViewProj, float4(Out.coord, rBasisPos.w));
+	Out.pos = mul(uViewProj, float4(Out.coord, 1.0));
 
-	Out.clipDist = uParam.w - Out.coord.y * uParam.z;
-	
 	return Out;
 }
 
 #else // PIXEL
 
 float4 main(VS_OUTPUT In) : COLOR0 {
-	float4 color = RGBA(tex2D(sDiffuse, In.texCoord.xy));
+	float4 color = SAMPLE_2D(sDiffuse, In.texCoord.xy);
 
 	#ifdef ALPHA_TEST
 		clip(color.w - ALPHA_REF);
 	#endif
 
-	#ifdef CLIP_PLANE
-		clip(In.clipDist);
-	#endif
-
 	color *= In.diffuse;
 
-	float3 normal   = normalize(In.normal.xyz);
-
 	float3 light = In.light.xyz;
-
-	if (OPT_CAUSTICS) {
-		light += calcCaustics(In.coord, normal);
-	}
 
 	color.xyz *= light;
 

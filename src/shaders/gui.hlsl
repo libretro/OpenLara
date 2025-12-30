@@ -10,7 +10,7 @@ struct VS_OUTPUT {
 VS_OUTPUT main(VS_INPUT In) {
 	VS_OUTPUT Out;
 	Out.pos       = mul(uViewProj, float4(In.aCoord.xy, 0.0, 1.0));
-	Out.texCoord  = In.aTexCoord.xy * (1.0 / 32767.0);
+	Out.texCoord  = In.aTexCoord.xy * INV_SHORT_HALF;
 	Out.diffuse   = In.aLight * uMaterial;
 	return Out;
 }
@@ -18,6 +18,6 @@ VS_OUTPUT main(VS_INPUT In) {
 #else // PIXEL
 
 float4 main(VS_OUTPUT In) : COLOR0 {
-	return In.diffuse * tex2D(sDiffuse, In.texCoord);
+	return In.diffuse * SAMPLE_2D_LINEAR(sDiffuse, In.texCoord);
 }
 #endif
