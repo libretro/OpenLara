@@ -41,7 +41,7 @@ ifeq ($(platform), unix)
    fpic := -fPIC
    SHARED := -shared -Wl,--version-script=link.T -Wl,--no-undefined
    ##MACMAC
-   ifeq ($(USE_GLVND), 1)
+   ifeq ($(GLVND), 1)
    GL_LIB := -lOpenGL
    LIBS += -lEGL
    CXXFLAGS += -DUSE_GLVND
