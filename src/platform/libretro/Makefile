@@ -44,7 +44,16 @@ ifeq ($(platform), unix)
    TARGET := $(TARGET_NAME)_libretro.so
    fpic := -fPIC
    SHARED := -shared -Wl,--version-script=link.T -Wl,--no-undefined
+   ##MACMAC
+   ifeq ($(GLVND), 1)
+   GL_LIB := -lOpenGL
+   LIBS += -lEGL
+   CXXFLAGS += -DUSE_GLVND
+   CFLAGS += -DUSE_GLVND
+   else
    GL_LIB := -lGL
+   endif
+   ##MACMAC
    LIBS += -lpthread
    CFLAGS += -D_GNU_SOURCE
    CXXFLAGS += -D_GNU_SOURCE

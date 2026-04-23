@@ -300,7 +300,12 @@ extern struct retro_hw_render_callback hw_render;
 #elif _OS_LINUX && !defined(__LIBRETRO_GLES__)
     #include <GL/gl.h>
     #include <GL/glext.h>
+#if defined(USE_GLVND) // Modern GL on GNU/Linux is GLVND, and it uses EGL instead of GLX.
+    #include <EGL/egl.h>
+    extern EGLDisplay display;
+#else
     #include <GL/glx.h>
+#endif
 #elif __APPLE__
     #ifdef _OS_IOS
         #include <OpenGLES/ES2/gl.h>
@@ -376,7 +381,11 @@ extern struct retro_hw_render_callback hw_render;
         #ifdef _OS_WIN
             return (void*)wglGetProcAddress(name);
         #elif _OS_LINUX && !(__LIBRETRO_GLES__)
+            #if defined(USE_GLVND)
+            return (void*)eglGetProcAddress(name);
+            #else
             return (void*)glXGetProcAddress((GLubyte*)name);
+            #endif
         #elif __SDL2__
             return (void*)SDL_GL_GetProcAddress(name);
         #else // EGL
@@ -397,7 +406,7 @@ extern struct retro_hw_render_callback hw_render;
     #ifdef _OS_WIN
         typedef BOOL (WINAPI * PFNWGLSWAPINTERVALEXTPROC) (int interval);
         PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT;
-    #elif _OS_LINUX
+    #elif _OS_LINUX && !defined(USE_GLVND)
         typedef int (*PFNGLXSWAPINTERVALSGIPROC) (int interval);
         PFNGLXSWAPINTERVALSGIPROC glXSwapIntervalSGI;
     #endif
@@ -1705,7 +1714,11 @@ namespace GAPI {
         #ifdef _OS_WIN
             if (wglSwapIntervalEXT) wglSwapIntervalEXT(enable ? 1 : 0);
         #elif _OS_LINUX
+            #if defined(USE_GLVND)
+            eglSwapInterval(display, enable ? 1 : 0);
+            #else
             if (glXSwapIntervalSGI) glXSwapIntervalSGI(enable ? 1 : 0);
+            #endif
         #elif defined(__SDL2__)
             SDL_GL_SetSwapInterval(enable ? 1 : 0);
         #elif defined(_OS_RPI) || defined(_OS_CLOVER) || defined(_OS_SWITCH)

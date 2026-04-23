@@ -63,6 +63,10 @@ static retro_input_poll_t input_poll_cb;
 static retro_input_state_t input_cb;
 static retro_set_rumble_state_t set_rumble_cb;
 
+#ifdef USE_GLVND
+EGLDisplay display;
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #include <mmsystem.h>
