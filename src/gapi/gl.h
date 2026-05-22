@@ -485,7 +485,7 @@ extern struct retro_hw_render_callback hw_render;
         PFNGLPROGRAMBINARYPROC glProgramBinary;
     #endif
 
-    #if defined(_GAPI_GLES)
+    #if defined(_GAPI_GLES) && !(__LIBRETRO__)
         PFNGLDISCARDFRAMEBUFFEREXTPROC      glDiscardFramebufferEXT;
     #endif
 
@@ -1492,7 +1492,7 @@ namespace GAPI {
             }
         }
         
-    #ifdef _GAPI_GLES
+    #if defined(_GAPI_GLES) || defined(_GAPI_GLES2)
         if (GLES3) {
             // vertex
             strcat(GLSL_HEADER_VERT, "#version 300 es\n"
