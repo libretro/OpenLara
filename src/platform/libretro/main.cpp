@@ -4,10 +4,22 @@
 #include <string.h>
 #include <math.h>
 
-#ifdef _WIN32
-#include "glsym.h" // Use local modified glsym.h to allow compilation on 64bit Windows
+#ifdef _WIN32 // Fixes compiling on Windows
+#ifndef __LIBRETRO_SDK_GLSYM_H__
+#define __LIBRETRO_SDK_GLSYM_H__
+#include <glsym/rglgen.h>
+#ifndef HAVE_PSGL
+#if defined(HAVE_OPENGLES2)
+#include <glsym/glsym_es2.h>
+#else
+#ifdef HAVE_OPENGLES3
+#include <glsym/glsym_es3.h>
+#endif
+#endif
+#endif
 #else
 #include <glsym/glsym.h>
+#endif
 #endif
 
 #include <libretro.h>
